@@ -1,5 +1,3 @@
-from typing import Optional
-
 from .exceptions import CuPyNotFoundError
 import numpy as np
 
@@ -125,7 +123,7 @@ def type_ok_for_operation(obj, raise_if_fail = False):
         raise RuntimeError(f"Expected objects of type: int, float, list, tuple, Tensor, numpy.ndarray, cupy.ndarray, got: {type(obj)}")
     return False
 
-def double_operand_operation(a, b, func, dtype = None, in_place = False):
+def double_operand_operation(a, b, callback, in_place = False):
     type_ok_for_operation(a, raise_if_fail=True)
     type_ok_for_operation(b, raise_if_fail=True)
 
@@ -134,102 +132,167 @@ def double_operand_operation(a, b, func, dtype = None, in_place = False):
             is_same_device(a, b, raise_if_fail=True)
             if is_cpu(a):
                 if in_place:
-                    a.data = getattr(np, func)(a.data, b.data, dtype=dtype)
+                    a.data = callback(a.data, b.data, device="cpu")
                     return a
-                return Tensor(data=getattr(np, func)(a.data, b.data, dtype=dtype), dtype=dtype, device="cpu")
+                return Tensor(data=callback(a.data, b.data, device="cpu"), device="cpu")
             if cp is not None and is_gpu(a):
                 if in_place:
-                    a.data = getattr(cp, func)(a.data, b.data, dtype=dtype)
+                    a.data = callback(a.data, b.data, device="gpu")
                     return a
-                return Tensor(data=getattr(cp, func)(a.data, b.data, dtype=dtype), dtype=dtype, device="gpu")
+                return Tensor(data=callback(a.data, b.data, device="gpu"), device="gpu")
         if isinstance(b, (np.ndarray, np.floating, np.integer)):
             is_cpu(a, raise_if_fail=True)
             if in_place:
-                a.data = getattr(np, func)(a.data, b, dtype=dtype)
+                a.data = callback(a.data, b, device="cpu")
                 return a
-            return Tensor(data=getattr(np, func)(a.data, b, dtype=dtype), dtype=dtype, device="cpu")
+            return Tensor(data=callback(a.data, b, device="cpu"), device="cpu")
         if cp is not None:
             if isinstance(b, (cp.ndarray, cp.floating, cp.integer)):
                 is_gpu(a, raise_if_fail=True)
                 if in_place:
-                    a.data = getattr(cp, func)(a.data, b, dtype=dtype)
+                    a.data = callback(a.data, b, device="gpu")
                     return a
-                return Tensor(data=getattr(cp, func)(a.data, b, dtype=dtype), dtype=dtype, device="gpu")
+                return Tensor(data=callback(a.data, b, device="gpu"), device="gpu")
         if isinstance(b, (int, float, list, tuple)):
             if is_cpu(a):
                 if in_place:
-                    a.data = getattr(np, func)(a.data, b, dtype=dtype)
+                    a.data = callback(a.data, b, device="cpu")
                     return a
-                return Tensor(data=getattr(np, func)(a.data, b, dtype=dtype), dtype=dtype, device="cpu")
+                return Tensor(data=callback(a.data, b, device="cpu"), device="cpu")
             if cp is not None and is_gpu(a):
                 if in_place:
-                    a.data = getattr(cp, func)(a.data, b, dtype=dtype)
+                    a.data = callback(a.data, b, device="gpu")
                     return a
-                return Tensor(data=getattr(cp, func)(a.data, b, dtype=dtype), dtype=dtype, device="gpu")
+                return Tensor(data=callback(a.data, b, device="gpu"), device="gpu")
         raise RuntimeError(f"Expected the second operand of type: int, float, list, tuple, Tensor, numpy.ndarray, cupy.ndarray, got: {type(b)}")
     if isinstance(b, Tensor):
         if isinstance(a, Tensor):
             is_same_device(b, a, raise_if_fail=True)
             if is_cpu(b):
                 if in_place:
-                    b.data = getattr(np, func)(b.data, a.data, dtype=dtype)
+                    b.data = callback(b.data, a.data, device="cpu")
                     return b
-                return Tensor(data=getattr(np, func)(b.data, a.data, dtype=dtype), dtype=dtype, device="cpu")
+                return Tensor(data=callback(b.data, a.data, device="cpu"), device="cpu")
             if cp is not None and is_gpu(b):
                 if in_place:
-                    b.data = getattr(cp, func)(b.data, a.data, dtype=dtype)
+                    b.data = callback(b.data, a.data, device="gpu")
                     return b
-                return Tensor(data=getattr(cp, func)(b.data, a.data, dtype=dtype), dtype=dtype, device="gpu")
+                return Tensor(data=callback(b.data, a.data, device="gpu"), device="gpu")
         if isinstance(a, (np.ndarray, np.floating, np.integer)):
             is_cpu(b, raise_if_fail=True)
             if in_place:
-                b.data = getattr(np, func)(b.data, a, dtype=dtype)
+                b.data = callback(b.data, a, device="cpu")
                 return b
-            return Tensor(data=getattr(np, func)(b.data, a, dtype=dtype), dtype=dtype, device="cpu")
+            return Tensor(data=callback(b.data, a, device="cpu"), device="cpu")
         if cp is not None:
             if isinstance(a, (cp.ndarray, cp.floating, cp.integer)):
                 is_gpu(b, raise_if_fail=True)
                 if in_place:
-                    b.data = getattr(cp, func)(b.data, a, dtype=dtype)
+                    b.data = callback(b.data, a, device="gpu")
                     return b
-                return Tensor(data=getattr(cp, func)(a.data, b, dtype=dtype), dtype=dtype, device="gpu")
+                return Tensor(data=callback(b.data, a, device="gpu"), device="gpu")
         if isinstance(a, (int, float, list, tuple)):
             if is_cpu(b):
                 if in_place:
-                    b.data = getattr(np, func)(b.data, a, dtype=dtype)
+                    b.data = callback(b.data, a, device="cpu")
                     return b
-                return Tensor(data=getattr(np, func)(b.data, a, dtype=dtype), dtype=dtype, device="cpu")
+                return Tensor(data=callback(b.data, a, device="cpu"), device="cpu")
             if cp is not None and is_gpu(b):
                 if in_place:
-                    b.data = getattr(cp, func)(b.data, a, dtype=dtype)
+                    b.data = callback(b.data, a, device="gpu")
                     return a
-                return Tensor(data=getattr(cp, func)(b.data, a, dtype=dtype), dtype=dtype, device="gpu")
+                return Tensor(data=callback(b.data, a, device="gpu"), device="gpu")
         raise RuntimeError(f"Expected the second operand of type: int, float, list, tuple, Tensor, numpy.ndarray, cupy.ndarray, got: {type(b)}")
+
+def single_operand_operation(a, callback, in_place = False):
+    #* a must be a Tensor
+    if isinstance(a, Tensor):
+        if in_place:
+            if is_cpu(a):
+                a.data = callback(a.data)
+                return a
+            a.data = callback(a.data)
+            return a
+        if is_cpu(a):
+            return Tensor(data=callback(a.data), device="cpu")
+        return Tensor(data=callback(a.data), device="gpu")
+    raise RuntimeError(f"Expected a tensor, got: {type(a)}")
 
 ###
 ###
 ###
 
 def add(a, b, dtype = None, in_place = False):
-    return double_operand_operation(a, b, 'add', dtype=dtype, in_place=in_place)
+    def callback(data_a, data_b, device):
+        if device == "cpu":
+            return np.add(data_a, data_b, dtype=dtype)
+        if cp is not None:
+            return cp.add(data_a, data_b, dtype=dtype)
+    return double_operand_operation(a, b, callback=callback, in_place=in_place)
 
 def subtract(a, b, dtype = None, in_place = False):
-    return double_operand_operation(a, b, 'subtract', dtype=dtype, in_place=in_place)
+    def callback(data_a, data_b, device):
+        if device == "cpu":
+            return np.subtract(data_a, data_b, dtype=dtype)
+        if cp is not None:
+            return cp.subtract(data_a, data_b, dtype=dtype)
+    return double_operand_operation(a, b, callback=callback, in_place=in_place)
 
 def multiply(a, b, dtype = None, in_place = False):
-    return double_operand_operation(a, b, 'multiply', dtype=dtype, in_place=in_place)
+    def callback(data_a, data_b, device):
+        if device == "cpu":
+            return np.multiply(data_a, data_b, dtype=dtype)
+        if cp is not None:
+            return cp.multiply(data_a, data_b, dtype=dtype)
+    return double_operand_operation(a, b, callback=callback, in_place=in_place)
 
 def divide(a, b, dtype = None, in_place = False):
-    return double_operand_operation(a, b, 'divide', dtype=dtype, in_place=in_place)
+    def callback(data_a, data_b, device):
+        if device == "cpu":
+            return np.divide(data_a, data_b, dtype=dtype)
+        if cp is not None:
+            return cp.divide(data_a, data_b, dtype=dtype)
+    return double_operand_operation(a, b, callback=callback, in_place=in_place)
 
 def power(a, b, dtype = None, in_place = False):
-    return double_operand_operation(a, b, 'power', dtype=dtype, in_place=in_place)
+    def callback(data_a, data_b, device):
+        if device == "cpu":
+            return np.power(data_a, data_b, dtype=dtype)
+        if cp is not None:
+            return cp.power(data_a, data_b, dtype=dtype)
+    return double_operand_operation(a, b, callback=callback, in_place=in_place)
 
-def dot(a, b, dtype = None, in_place = False):
-    return double_operand_operation(a, b, "dot", dtype=dtype, in_place=in_place)
+def dot(a, b, in_place = False):
+    def callback(data_a, data_b, device):
+        if device == "cpu":
+            return np.dot(data_a, data_b)
+        if cp is not None:
+            return cp.dot(data_a, data_b)
+    return double_operand_operation(a, b, callback=callback, in_place=in_place)
 
 def matmul(a, b, dtype = None, in_place = False):
-    return double_operand_operation(a, b, "matmul", dtype=dtype, in_place=in_place)
+    def callback(data_a, data_b, device):
+        if device == "cpu":
+            return np.matmul(data_a, data_b, dtype=dtype)
+        if cp is not None:
+            return cp.matmul(data_a, data_b, dtype=dtype)
+    return double_operand_operation(a, b, callback=callback, in_place=in_place)
+
+def mean(a, axis = None, dtype = None, keepdims = False, in_place = False):
+    def callback(data):
+        if is_cpu(data):
+            return np.mean(data, axis, dtype=dtype, keepdims=keepdims)
+        if cp is not None:
+            return cp.mean(data, axis, dtype=dtype, keepdims=keepdims)
+    return single_operand_operation(a, callback, in_place=in_place)
+
+def square(a, dtype = None, in_place = False):
+    def callback(data):
+        if is_cpu(data):
+            return np.square(data, dtype=dtype)
+        if cp is not None:
+            return cp.square(data, dtype=dtype)
+    return single_operand_operation(a, callback, in_place=in_place)
 
 ###
 ###
@@ -275,11 +338,17 @@ class Tensor():
     def power(self, other, dtype = None, in_place = False):
         return power(self, other, dtype=dtype, in_place=in_place)
     
-    def dot(self, other, dtype = None, in_place = False):
-        return dot(self, other, dtype=dtype, in_place=in_place)
+    def dot(self, other, in_place = False):
+        return dot(self, other, in_place=in_place)
     
     def matmul(self, other, dtype = None, in_place = False):
         return matmul(self, other, dtype=dtype, in_place=in_place)
+    
+    def mean(self, axis = None, dtype = None, keepdims = False, in_place = False):
+        return mean(self, axis=axis, dtype=dtype, keepdims=keepdims, in_place=in_place)
+    
+    def square(self, dtype = None, in_place = False):
+        return square(self, dtype=dtype, in_place=in_place)
     
     ###
     ###
@@ -319,11 +388,11 @@ class Tensor():
         return power(self, other, in_place=True)
     
     def __matmul__(self, other):
-        return dot(self, other)
+        return matmul(self, other)
     def __rmatmul__(self, other):
-        return dot(other, self)
+        return matmul(other, self)
     def __imatmul__(self, other):
-        return dot(self, other, in_place=True)
+        return matmul(self, other, in_place=True)
 
     ###
     ###
