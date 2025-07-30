@@ -66,7 +66,6 @@ def is_gpu(obj, raise_if_fail = False):
         ))
     return False
 
-
 def validate_device_str(string, raise_if_fail = False):
     if string in ["cpu", "gpu"]:
         return True
@@ -114,7 +113,7 @@ def convert_to_array(obj, dtype = None, device = None):
 ###
 
 def type_ok_for_operation(obj, raise_if_fail = False):
-    if isinstance(obj, (int, float, list, tuple, np.ndarray, np.floating, np.integer, Tensor)):
+    if isinstance(obj, (np.ndarray, np.floating, np.integer, Tensor)):
         return True
     if cp is not None:
         if isinstance(obj, (cp.ndarray, cp.floating, cp.integer)):
@@ -123,88 +122,29 @@ def type_ok_for_operation(obj, raise_if_fail = False):
         raise RuntimeError(f"Expected objects of type: int, float, list, tuple, Tensor, numpy.ndarray, cupy.ndarray, got: {type(obj)}")
     return False
 
-def double_operand_operation(a, b, callback, in_place = False):
+def double_operand_operation(a, b, callback, backward_callback, in_place = False):
     type_ok_for_operation(a, raise_if_fail=True)
     type_ok_for_operation(b, raise_if_fail=True)
-
-    if isinstance(a, Tensor):
-        if isinstance(b, Tensor):
-            is_same_device(a, b, raise_if_fail=True)
-            if is_cpu(a):
-                if in_place:
-                    a.data = callback(a.data, b.data, device="cpu")
-                    return a
-                return Tensor(data=callback(a.data, b.data, device="cpu"), device="cpu")
-            if cp is not None and is_gpu(a):
-                if in_place:
-                    a.data = callback(a.data, b.data, device="gpu")
-                    return a
-                return Tensor(data=callback(a.data, b.data, device="gpu"), device="gpu")
-        if isinstance(b, (np.ndarray, np.floating, np.integer)):
-            is_cpu(a, raise_if_fail=True)
+    if isinstance(a, Tensor) and isinstance(b, Tensor):
+        is_same_device(a, b, raise_if_fail=True)
+        if is_cpu(a):
             if in_place:
-                a.data = callback(a.data, b, device="cpu")
+                a.data = callback(a.data, b.data, device="cpu")
                 return a
-            return Tensor(data=callback(a.data, b, device="cpu"), device="cpu")
-        if cp is not None:
-            if isinstance(b, (cp.ndarray, cp.floating, cp.integer)):
-                is_gpu(a, raise_if_fail=True)
-                if in_place:
-                    a.data = callback(a.data, b, device="gpu")
-                    return a
-                return Tensor(data=callback(a.data, b, device="gpu"), device="gpu")
-        if isinstance(b, (int, float, list, tuple)):
-            if is_cpu(a):
-                if in_place:
-                    a.data = callback(a.data, b, device="cpu")
-                    return a
-                return Tensor(data=callback(a.data, b, device="cpu"), device="cpu")
-            if cp is not None and is_gpu(a):
-                if in_place:
-                    a.data = callback(a.data, b, device="gpu")
-                    return a
-                return Tensor(data=callback(a.data, b, device="gpu"), device="gpu")
-        raise RuntimeError(f"Expected the second operand of type: int, float, list, tuple, Tensor, numpy.ndarray, cupy.ndarray, got: {type(b)}")
-    if isinstance(b, Tensor):
-        if isinstance(a, Tensor):
-            is_same_device(b, a, raise_if_fail=True)
-            if is_cpu(b):
-                if in_place:
-                    b.data = callback(b.data, a.data, device="cpu")
-                    return b
-                return Tensor(data=callback(b.data, a.data, device="cpu"), device="cpu")
-            if cp is not None and is_gpu(b):
-                if in_place:
-                    b.data = callback(b.data, a.data, device="gpu")
-                    return b
-                return Tensor(data=callback(b.data, a.data, device="gpu"), device="gpu")
-        if isinstance(a, (np.ndarray, np.floating, np.integer)):
-            is_cpu(b, raise_if_fail=True)
+            result = Tensor(data=callback(a.data, b.data, device="cpu"), device="cpu", requires_grad=a.requires_grad or b.requires_grad, prev=(a, b))
+            if result.requires_grad:
+                backward_callback(result, a, b)
+            return result
+        if cp is not None and is_gpu(a):
             if in_place:
-                b.data = callback(b.data, a, device="cpu")
-                return b
-            return Tensor(data=callback(b.data, a, device="cpu"), device="cpu")
-        if cp is not None:
-            if isinstance(a, (cp.ndarray, cp.floating, cp.integer)):
-                is_gpu(b, raise_if_fail=True)
-                if in_place:
-                    b.data = callback(b.data, a, device="gpu")
-                    return b
-                return Tensor(data=callback(b.data, a, device="gpu"), device="gpu")
-        if isinstance(a, (int, float, list, tuple)):
-            if is_cpu(b):
-                if in_place:
-                    b.data = callback(b.data, a, device="cpu")
-                    return b
-                return Tensor(data=callback(b.data, a, device="cpu"), device="cpu")
-            if cp is not None and is_gpu(b):
-                if in_place:
-                    b.data = callback(b.data, a, device="gpu")
-                    return a
-                return Tensor(data=callback(b.data, a, device="gpu"), device="gpu")
-        raise RuntimeError(f"Expected the second operand of type: int, float, list, tuple, Tensor, numpy.ndarray, cupy.ndarray, got: {type(b)}")
+                a.data = callback(a.data, b.data, device="gpu")
+                return a
+            result = Tensor(data=callback(a.data, b.data, device="gpu"), device="gpu", requires_grad=a.requires_grad or b.requires_grad, prev=(a, b))
+            if result.requires_grad:
+                backward_callback(result, a, b)
+            return result
 
-def single_operand_operation(a, callback, in_place = False):
+def single_operand_operation(a, callback, backward_callback, in_place = False):
     #* a must be a Tensor
     if isinstance(a, Tensor):
         if in_place:
@@ -214,13 +154,87 @@ def single_operand_operation(a, callback, in_place = False):
             a.data = callback(a.data)
             return a
         if is_cpu(a):
-            return Tensor(data=callback(a.data), device="cpu")
-        return Tensor(data=callback(a.data), device="gpu")
+            result = Tensor(data=callback(a.data), device="cpu", requires_grad=a.requires_grad, prev=(a,))
+            if result.requires_grad:
+                backward_callback(result, a)
+            return result
+        result = Tensor(data=callback(a.data), device="gpu", requires_grad=a.requires_grad, prev=(a,))
+        if result.requires_grad:
+            backward_callback(result, a)
+        return result
     raise RuntimeError(f"Expected a tensor, got: {type(a)}")
 
 ###
 ###
 ###
+
+def zeros_like(obj, dtype = None):
+    if isinstance(obj, (list, tuple, np.ndarray)):
+        return np.zeros_like(obj, dtype=dtype)
+    if cp is not None and isinstance(obj, cp.ndarray):
+        return cp.zeros_like(obj, dtype=dtype)
+    if isinstance(obj, Tensor):
+        if is_cpu(obj):
+            return np.zeros_like(obj.data, dtype=dtype)
+        if cp is not None:
+            return cp.zeros_like(obj.data, dtype=dtype)
+
+###
+###
+###
+
+def sum_to_shape(result, target_shape, device):
+    """
+    Reverses broadcasting to the un-broadcasted shape.
+
+    When a variable was broadcasted in order to be compatible with the other, e.g. [1.0] + [1.0, 2.0, 3.0], differentiating 
+    the result w.r.t. the broadcasted variable such that the gradient matches the variable's gradient requires collapsing 
+    the result's shape down to the variable's.
+
+    Let's say:
+    Scalar A, vector B (1x3)
+
+    C = A + B (A is broadcasted into a 1x3 vector)
+
+    In order to calculate A's gradients, per the chain rule, we have to differentiate C w.r.t. A, which gives you a vector 
+    with the same shape as C's, even though the gradient's shape must match A's.
+
+    Mathematically, since A influences every components of C, to get the gradient, we would have to sum every connections from
+    A to C, which this function generalizes for every cases.
+    """
+
+    result_shape = result.shape
+    if result_shape == target_shape:
+        return result
+    
+    gained_dims = len(result_shape) - len(target_shape)
+    if gained_dims > 0:
+        #* We sum for gained dimensions.
+        gained_axes = tuple([i for i in range(gained_dims)])
+        
+        if device == "cpu":
+            result = np.sum(result, axis=gained_axes)
+        elif device == "gpu":
+            if cp is None:
+                raise CuPyNotFoundError(CUPY_NOT_FOUND)
+            result = cp.sum(result, axis=gained_axes)
+
+    #* Just collapsing theg gained dimensions would not be enough, collapsing stretched dimensions is required too.
+    stretched_axes = []
+    print(target_shape)
+    for i, d in enumerate(target_shape):
+        if result.ndim == 0:
+            continue
+        if d == 1 and result.shape[i] > 1:
+            stretched_axes.append(i)
+    if len(stretched_axes) > 0:
+        if device == "cpu":
+            result = np.sum(result, axis=tuple(stretched_axes), keepdims=True)
+        elif device == "gpu":
+            if cp is None:
+                raise CuPyNotFoundError(CUPY_NOT_FOUND)
+            result = cp.sum(result, axis=tuple(stretched_axes), keepdims=True)
+    return result
 
 def add(a, b, dtype = None, in_place = False):
     def callback(data_a, data_b, device):
@@ -228,7 +242,14 @@ def add(a, b, dtype = None, in_place = False):
             return np.add(data_a, data_b, dtype=dtype)
         if cp is not None:
             return cp.add(data_a, data_b, dtype=dtype)
-    return double_operand_operation(a, b, callback=callback, in_place=in_place)
+    def backward_callback(result, a, b):
+        def backward():
+            if a.requires_grad:
+                a.grad += sum_to_shape(result.grad * 1, a.grad.shape, device=result.device)
+            if b.requires_grad:
+                b.grad += sum_to_shape(result.grad * 1, b.grad.shape, device=result.device)
+        result.backward = backward
+    return double_operand_operation(a, b, callback=callback, backward_callback=backward_callback, in_place=in_place)
 
 def subtract(a, b, dtype = None, in_place = False):
     def callback(data_a, data_b, device):
@@ -236,7 +257,14 @@ def subtract(a, b, dtype = None, in_place = False):
             return np.subtract(data_a, data_b, dtype=dtype)
         if cp is not None:
             return cp.subtract(data_a, data_b, dtype=dtype)
-    return double_operand_operation(a, b, callback=callback, in_place=in_place)
+    def backward_callback(result, a, b):
+        def backward():
+            if a.requires_grad:
+                a.grad += sum_to_shape(result.grad * 1, a.grad.shape, device=result.device)
+            if b.requires_grad:
+                b.grad += sum_to_shape(result.grad * -1, b.grad.shape, device=result.device)
+        result.backward = backward
+    return double_operand_operation(a, b, callback=callback, backward_callback=backward_callback, in_place=in_place)
 
 def multiply(a, b, dtype = None, in_place = False):
     def callback(data_a, data_b, device):
@@ -244,7 +272,14 @@ def multiply(a, b, dtype = None, in_place = False):
             return np.multiply(data_a, data_b, dtype=dtype)
         if cp is not None:
             return cp.multiply(data_a, data_b, dtype=dtype)
-    return double_operand_operation(a, b, callback=callback, in_place=in_place)
+    def backward_callback(result, a, b):
+        def backward():
+            if a.requires_grad:
+                a.grad += sum_to_shape(result.grad * b.data, a.grad.shape, device=result.device)
+            if b.requires_grad:
+                b.grad += sum_to_shape(result.grad * a.data, b.grad.shape, device=result.device)
+        result.backward = backward
+    return double_operand_operation(a, b, callback=callback, backward_callback=backward_callback, in_place=in_place)
 
 def divide(a, b, dtype = None, in_place = False):
     def callback(data_a, data_b, device):
@@ -252,7 +287,14 @@ def divide(a, b, dtype = None, in_place = False):
             return np.divide(data_a, data_b, dtype=dtype)
         if cp is not None:
             return cp.divide(data_a, data_b, dtype=dtype)
-    return double_operand_operation(a, b, callback=callback, in_place=in_place)
+    def backward_callback(result, a, b):
+        def backward():
+            if a.requires_grad:
+                a.grad += sum_to_shape(result.grad / b.data, a.grad.shape, device=result.device)
+            if b.requires_grad:
+                b.grad += sum_to_shape(result.grad * (a.data * -b.data**-2), b.grad.shape, device=result.device)
+        result.backward = backward
+    return double_operand_operation(a, b, callback=callback, backward_callback=backward_callback, in_place=in_place)
 
 def power(a, b, dtype = None, in_place = False):
     def callback(data_a, data_b, device):
@@ -260,7 +302,14 @@ def power(a, b, dtype = None, in_place = False):
             return np.power(data_a, data_b, dtype=dtype)
         if cp is not None:
             return cp.power(data_a, data_b, dtype=dtype)
-    return double_operand_operation(a, b, callback=callback, in_place=in_place)
+    def backward_callback(result, a, b):
+        def backward():
+            if a.requires_grad:
+                a.grad += sum_to_shape(result.grad * (b.data * a.data**(b.data - 1)), a.grad.shape, device=result.device)
+            if b.requires_grad:
+                b.grad += sum_to_shape(result.grad * -a.data, b.grad.shape, device=result.device)
+        result.backward = backward
+    return double_operand_operation(a, b, callback=callback, backward_callback=backward_callback, in_place=in_place)
 
 def dot(a, b, in_place = False):
     def callback(data_a, data_b, device):
@@ -268,7 +317,51 @@ def dot(a, b, in_place = False):
             return np.dot(data_a, data_b)
         if cp is not None:
             return cp.dot(data_a, data_b)
-    return double_operand_operation(a, b, callback=callback, in_place=in_place)
+    def backward_callback(result, a, b):
+        def backward() -> None:
+            if a.ndim == 0 or b.ndim == 0:
+                if a.requires_grad:
+                    a.grad += sum_to_shape(result.grad * b.data, a.grad.shape, result.device)
+                if b.requires_grad:
+                    b.grad += sum_to_shape(result.grad * a.data, b.grad.shape, result.device)
+            #* Vec-vec
+            elif a.ndim == 1 and b.ndim == 1:
+                if a.requires_grad:
+                    a.grad += sum_to_shape(result.grad * b.data, a.grad.shape, result.device)
+                if b.requires_grad:
+                    b.grad += sum_to_shape(result.grad * a.data, b.grad.shape, result.device)
+            #* Mat-vec
+            elif a.ndim == 2 and b.ndim == 1:
+                if a.requires_grad:
+                    if a.device == "gpu":
+                        if cp is None:
+                            raise CuPyNotFoundError(CUPY_NOT_FOUND)
+                        a.grad += cp.outer(result.grad, b.data)
+                    elif a.device == "cpu":
+                        a.grad += np.outer(result.grad, b.data)
+                if b.requires_grad:
+                    b.grad += a.data.T @ result.grad
+            #* Vec-mat
+            elif a.ndim == 1 and b.ndim == 2:
+                if a.requires_grad:
+                    a.grad += result.grad @ b.data.T
+                if b.requires_grad:
+                    if b.device == "gpu":
+                        if cp is None:
+                            raise CuPyNotFoundError(CUPY_NOT_FOUND)
+                        b.grad += cp.outer(a.data, result.grad)
+                    elif b.device == "cpu":
+                        b.grad += np.outer(a.data, result.grad)
+            #* Mat-mat / ten-ten
+            elif a.ndim > 1 and b.ndim > 1:
+                if a.requires_grad:
+                    a.grad += result.grad @ b.data.swapaxes(-2, -1)
+                if b.requires_grad:
+                    b.grad += a.data.swapaxes(-2, -1) @ result.grad
+            else:
+                raise RuntimeError("An unexpected error has occurred.")
+        result.backward = backward
+    return double_operand_operation(a, b, callback=callback, backward_callback=backward_callback, in_place=in_place)
 
 def matmul(a, b, dtype = None, in_place = False):
     def callback(data_a, data_b, device):
@@ -276,7 +369,45 @@ def matmul(a, b, dtype = None, in_place = False):
             return np.matmul(data_a, data_b, dtype=dtype)
         if cp is not None:
             return cp.matmul(data_a, data_b, dtype=dtype)
-    return double_operand_operation(a, b, callback=callback, in_place=in_place)
+    def backward_callback(result, a, b):
+        def backward():
+            if a.ndim == 1 and b.ndim == 1:
+                if a.requires_grad:
+                    a.grad += sum_to_shape(result.grad * b.data, a.grad.shape, result.device)
+                if b.requires_grad:
+                    b.grad += sum_to_shape(result.grad * a.data, b.grad.shape, result.device)
+            #* Mat-vec
+            elif a.ndim == 2 and b.ndim == 1:
+                if a.requires_grad:
+                    if a.device == "gpu":
+                        if cp is None:
+                            raise CuPyNotFoundError(CUPY_NOT_FOUND)
+                        a.grad += cp.outer(result.grad, b.data)
+                    elif a.device == "cpu":
+                        a.grad += np.outer(result.grad, b.data)
+                if b.requires_grad:
+                    b.grad += a.data.T @ result.grad
+            #* Vec-mat
+            elif a.ndim == 1 and b.ndim == 2:
+                if a.requires_grad:
+                    a.grad += result.grad @ b.data.T
+                if b.requires_grad:
+                    if b.device == "gpu":
+                        if cp is None:
+                            raise CuPyNotFoundError(CUPY_NOT_FOUND)
+                        b.grad += cp.outer(a.data, result.grad)
+                    elif b.device == "cpu":
+                        b.grad += np.outer(a.data, result.grad)
+            #* Mat-mat / ten-ten
+            elif a.ndim > 1 and b.ndim > 1:
+                if a.requires_grad:
+                    a.grad += result.grad @ b.data.swapaxes(-2, -1)
+                if b.requires_grad:
+                    b.grad += a.data.swapaxes(-2, -1) @ result.grad
+            else:
+                raise RuntimeError("An unexpected error has occurred.")
+        result.backward = backward
+    return double_operand_operation(a, b, callback=callback, backward_callback=backward_callback, in_place=in_place)
 
 def mean(a, axis = None, dtype = None, keepdims = False, in_place = False):
     def callback(data):
@@ -284,7 +415,20 @@ def mean(a, axis = None, dtype = None, keepdims = False, in_place = False):
             return np.mean(data, axis, dtype=dtype, keepdims=keepdims)
         if cp is not None:
             return cp.mean(data, axis, dtype=dtype, keepdims=keepdims)
-    return single_operand_operation(a, callback, in_place=in_place)
+    def backward_callback(result, a):
+        def backward():
+            if a.requires_grad:
+                size = 1
+                if isinstance(axis, int):
+                    size = a.shape[axis]
+                elif isinstance(axis, tuple):
+                    if is_cpu(result):
+                        size = np.prod([a.shape[axis] for axis in axis])
+                    if cp is not None and is_gpu(result):
+                        size = cp.prod([a.shape[axis] for axis in axis])
+                a.grad += sum_to_shape(result.grad / size, a.grad.shape, result.device)
+        result.backward = backward
+    return single_operand_operation(a, callback, backward_callback=backward_callback, in_place=in_place)
 
 def square(a, dtype = None, in_place = False):
     def callback(data):
@@ -292,18 +436,28 @@ def square(a, dtype = None, in_place = False):
             return np.square(data, dtype=dtype)
         if cp is not None:
             return cp.square(data, dtype=dtype)
-    return single_operand_operation(a, callback, in_place=in_place)
+    def backward_callback(result, a):
+        def backward():
+            if a.requires_grad:
+                a.grad += sum_to_shape(result.grad * 2, a.grad.shape, result.device)
+        result.backward = backward
+    return single_operand_operation(a, callback, backward_callback=backward_callback, in_place=in_place)
 
 ###
 ###
 ###
 
 class Tensor():
-    def __init__(self, data, dtype = None, device = None) -> None:
+    def __init__(self, data, dtype = None, device = None, prev = (), requires_grad = False) -> None:
         data = convert_to_array(data, dtype=dtype, device=device)
         self.data = data
         self.device = device
         self.dtype = data.dtype
+
+        self.requires_grad = requires_grad
+        self.prev = prev
+        self.backward = None
+        self.grad = zeros_like(self.data, dtype=self.dtype)
 
     ###
     ###
