@@ -8,8 +8,6 @@ floating: TypeAlias = np.floating
 float16: TypeAlias = np.float16
 float32: TypeAlias = np.float32
 float64: TypeAlias = np.float64
-float96: TypeAlias = np.float96
-float128: TypeAlias = np.float128
 
 integer: TypeAlias = np.integer
 int8: TypeAlias = np.int8
@@ -21,7 +19,7 @@ double: TypeAlias = np.double
 
 __all__ = [
     'DTypeLike', 
-    'floating', 'float16', 'float32', 'float64', 'float96', 'float128',
+    'floating', 'float16', 'float32', 'float64',
     'integer', 'int8', 'int16', 'int16', 'int64',
     'double'
     ]
