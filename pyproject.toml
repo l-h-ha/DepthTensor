@@ -13,6 +13,9 @@ dependencies = [
 test = [
     "pytest"
 ]
+gpu = [
+    "cupy-cuda12x"
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
