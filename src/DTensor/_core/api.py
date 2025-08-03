@@ -18,14 +18,31 @@ class api(ABC):
 
     def __init__(self, data: Any, device: str, dtype: Optional[DTypeLike] = None, prev: Tuple = (), requires_grad: bool = False) -> None:
         super().__init__()
-        if isinstance(data, (int, float, list, tuple, np.ndarray, np.floating, np.integer)):
-            data = np.asarray(data)
-        elif cp is not None and isinstance(data, (cp.ndarray, cp.floating, cp.integer)):
-            data = cp.asarray(data)
-        else:
-            raise RuntimeError(f"Expected an object of type: int, float, list, tuple, numpy.ndarray, numpy.floating, numpy.integer, cupy.ndarray, cupy.floating, cupy.integer. Got: {type(data)}")
+        if device == "cpu":
+            if isinstance(data, (int, float, list, tuple)):
+                data = np.asarray(data)
+            elif isinstance(data, (np.ndarray, np.floating, np.integer)):
+                data = data
+            else:
+                if cp is not None:
+                    if isinstance(data, (cp.ndarray, cp.floating, cp.integer)):
+                        data = cp.asnumpy(data)
+                raise RuntimeError(f"Expected objects of type: int, float, list, tuple, numpy.ndarray, numpy.floating, numpy.integer, cupy.ndarray, cupy.floating, cupy.integer, got: {type(data)}")
+        elif device == "gpu":
+            if cp is not None:
+                if isinstance(data, (int, float, list, tuple)):
+                    data = cp.asarray(data)
+                elif isinstance(data, (cp.ndarray, cp.floating, cp.integer)):
+                    data = data
+                else:
+                    if isinstance(data, (np.ndarray, np.floating, np.integer)):
+                        data = cp.asarray(data)
+                    raise RuntimeError(f"Expected objects of type: int, float, list, tuple, numpy.ndarray, numpy.floating, numpy.integer, cupy.ndarray, cupy.floating, cupy.integer, got: {type(data)}")
+            else:
+                raise RuntimeError("Module CuPy not found or installed.")
         if dtype is not None and data.dtype != dtype:
-            data = data.astype(dtype=dtype)
+            data = data.astype(dtype)
+
         self.data = data
         self.device = device
         self.dtype = data.dtype
