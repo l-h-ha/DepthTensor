@@ -1,4 +1,5 @@
 .pyc
 *.venv
 *__pycache__
-*src/DTensor.egg-info/
+
+src/DTensor.egg-info/
