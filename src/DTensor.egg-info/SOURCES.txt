@@ -1,0 +1,17 @@
+LICENSE
+README.md
+pyproject.toml
+src/DTensor/__init__.py
+src/DTensor/autodiff.py
+src/DTensor/cpu.py
+src/DTensor/gpu.py
+src/DTensor.egg-info/PKG-INFO
+src/DTensor.egg-info/SOURCES.txt
+src/DTensor.egg-info/dependency_links.txt
+src/DTensor.egg-info/requires.txt
+src/DTensor.egg-info/top_level.txt
+src/DTensor/_core/__init__.py
+src/DTensor/_core/api.py
+src/DTensor/_core/utils.py
+src/example/example.py
+tests/test.py

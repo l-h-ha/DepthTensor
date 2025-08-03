@@ -1,11 +1,11 @@
 from __future__ import annotations
-from typing import Any, Optional, Tuple, Union, TypeAlias
+from typing import Any, Optional, Tuple, Union
 
 from ._core.api import api
 from ._core import sum_to_shape
+from .types import DTypeLike
 
 import numpy as np
-DTypeLike: TypeAlias = np.typing.DTypeLike
 
 class cpu(api):
     def __init__(self, data: Any, dtype: Optional[DTypeLike] = None, prev: Tuple = (), requires_grad: bool = False) -> None:

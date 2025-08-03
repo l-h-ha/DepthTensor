@@ -1,19 +1,18 @@
 from __future__ import annotations
-from typing import Any, Optional, Tuple, Union, TypeAlias
+from typing import Any, Optional, Tuple, Union
 
 from ._core.api import api
 from ._core import sum_to_shape
+from .types import DTypeLike
 
-import numpy as np
 try:
     import cupy as cp
 except (ImportError, ModuleNotFoundError):
     cp = None
 CUPY_NOT_FOUND = "Module CuPy not found or installed."
-DTypeLike: TypeAlias = np.typing.DTypeLike
 
 class gpu(api):
-    def __init__(self, data: Any, dtype: Optional[np.typing.DTypeLike] = None, prev: Tuple = (), requires_grad: bool = False) -> None:
+    def __init__(self, data: Any, dtype: Optional[DTypeLike] = None, prev: Tuple = (), requires_grad: bool = False) -> None:
         if cp is None: raise RuntimeError(CUPY_NOT_FOUND)
         super().__init__(data, "gpu", dtype, prev, requires_grad)
         self.grad = cp.zeros_like(self.data, self.dtype)
