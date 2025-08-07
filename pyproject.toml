@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "DTensor"
+name = "DepthTensor"
 version = "0.0.1"   
 dependencies = [
     "numpy"

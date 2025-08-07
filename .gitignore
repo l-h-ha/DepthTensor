@@ -2,4 +2,5 @@
 *.venv
 *__pycache__
 
-src/DTensor.egg-info/
+src/DepthTensor.egg-info/
+build/

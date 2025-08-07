@@ -1,4 +1,4 @@
-from DTensor import *
+from DepthTensor import *
 
 import numpy as np
 try:

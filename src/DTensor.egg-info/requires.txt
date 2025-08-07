@@ -1,7 +1,0 @@
-numpy
-
-[gpu]
-cupy-cuda12x
-
-[test]
-pytest

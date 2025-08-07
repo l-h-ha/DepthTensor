@@ -1,4 +1,4 @@
-from ..DTensor import CPUtensor, differentiate
+from ..DepthTensor import CPUtensor, differentiate
 
 a = CPUtensor(1.0, requires_grad=True)
 b = CPUtensor(2.0, requires_grad=True)
