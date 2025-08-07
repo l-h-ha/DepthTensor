@@ -5,6 +5,7 @@ src/DTensor/__init__.py
 src/DTensor/autodiff.py
 src/DTensor/cpu.py
 src/DTensor/gpu.py
+src/DTensor/types.py
 src/DTensor.egg-info/PKG-INFO
 src/DTensor.egg-info/SOURCES.txt
 src/DTensor.egg-info/dependency_links.txt
