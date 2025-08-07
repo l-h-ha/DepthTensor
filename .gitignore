@@ -4,3 +4,4 @@
 
 src/DepthTensor.egg-info/
 build/
+dist/
