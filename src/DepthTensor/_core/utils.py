@@ -1,16 +1,37 @@
-from typing import Any, Tuple
+from typing import Any, Union, Tuple
+
+from ..typing import DeviceLike
+from .exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG
 
 import numpy as np
 try:
     import cupy as cp
-except:
+except (ImportError, ModuleNotFoundError):
     cp = None
 
-CUPY_NOT_FOUND = "Module CuPy not found or installed."
-class CuPyNotFoundError(RuntimeError):
-    pass
+###
+###
+###
 
-def sum_to_shape(result: Any, target_shape: Tuple, device: str) -> Any:
+def xp_array_to_device(obj: Union[np.ndarray, Any], device: DeviceLike) -> Union[np.ndarray, Any]:
+    if isinstance(obj, np.ndarray):
+        if device == "cpu":
+            return obj
+        #* gpu
+        if cp is not None:
+            return cp.array(obj)
+        else:
+            raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+    else:
+        if cp is not None and isinstance(obj, cp.ndarray):
+            if device == "gpu":
+                return obj
+            #* cpu
+            return cp.asnumpy(obj)
+        else:
+            raise RuntimeError(f"Expected argument 'obj' of type numpy.ndarray/cupy.ndarray, got: {type(obj)}")
+
+def sum_to_shape(result: Any, target_shape: Tuple, device: DeviceLike) -> Any:
     """
     Reverses broadcasting to the un-broadcasted shape.
 
@@ -36,14 +57,13 @@ def sum_to_shape(result: Any, target_shape: Tuple, device: str) -> Any:
     
     gained_dims = len(result_shape) - len(target_shape)
     if gained_dims > 0:
-        #* We sum for gained dimensions.
+        #* Sum for gained dimensions.
         gained_axes = tuple([i for i in range(gained_dims)])
         
         if device == "cpu":
             result = np.sum(result, axis=gained_axes)
         elif device == "gpu":
-            if cp is None:
-                raise CuPyNotFoundError(CUPY_NOT_FOUND)
+            if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
             result = cp.sum(result, axis=gained_axes)
 
     #* Just collapsing the gained dimensions would not be enough, collapsing stretched dimensions is required too.
@@ -57,7 +77,15 @@ def sum_to_shape(result: Any, target_shape: Tuple, device: str) -> Any:
         if device == "cpu":
             result = np.sum(result, axis=tuple(stretched_axes), keepdims=True)
         elif device == "gpu":
-            if cp is None:
-                raise CuPyNotFoundError(CUPY_NOT_FOUND)
+            if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
             result = cp.sum(result, axis=tuple(stretched_axes), keepdims=True)
     return result
+
+###
+### 
+###
+
+__all__ = [
+    'xp_array_to_device',
+    'sum_to_shape'
+]

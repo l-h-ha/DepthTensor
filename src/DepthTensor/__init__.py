@@ -1,6 +1,4 @@
-from .cpu import cpu as CPUtensor
-from .gpu import gpu as GPUTensor
-from .autodiff import differentiate
-from .types import *
+from .tensor import Tensor
+from .typing import *
 
-__version__ = "0.0.2"
+__version__ = "1.0.0"

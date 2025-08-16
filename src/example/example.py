@@ -1,7 +1,10 @@
-from ..DepthTensor import CPUtensor, differentiate
+from ..DepthTensor import Tensor
 
-a = CPUtensor(1.0, requires_grad=True)
-b = CPUtensor(2.0, requires_grad=True)
-c = a + b
-differentiate(c)
+a = Tensor(2., requires_grad=True)
+b = Tensor(3., requires_grad=True)
+c = Tensor.add(a, b)
+c.grad = Tensor(1., requires_grad=True).data
+if c.backward is not None:
+    c.backward()
+print(c)
 print(a.grad)

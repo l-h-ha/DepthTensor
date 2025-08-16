@@ -1,0 +1,449 @@
+from __future__ import annotations
+from typing import (
+    Union, Optional, Any,
+    Tuple, Callable, overload
+)
+
+from .typing import (
+    ArrayLike, DTypeLike, Order,
+    DeviceLike, ShapeLike, ArrayLikeBool,
+    Casting, AxisShapeLike
+)
+
+from ._core import (
+    xp_array_to_device,
+    CuPyNotFound, CUPY_NOT_FOUND_MSG,
+
+    #* creation
+    zeros_like, ones_like,
+
+    #* elementwise
+    add, subtract, multiply, matmul, divide,
+    negative,
+
+    #* exponents/logarithm
+    exp,
+
+    #* diff
+    add_diff, subtract_diff, multiply_diff, matmul_diff, divide_diff,
+    negative_diff, exp_diff,
+
+    #* comparison
+    where,
+
+    #* reduction
+    max, maximum
+)
+
+import numpy as np
+try:
+    import cupy as cp
+except (ModuleNotFoundError, ImportError):
+    cp = None
+_NoValue = object()
+
+###
+###
+###
+
+def _wrapper_2in_1out(y, diff_func, x1, x2, record_op):
+    if record_op:
+        return diff_func(y, x1, x2)
+    return y
+
+def _wrapper_1in_1out(y, diff_func, x, record_op):
+    if record_op:
+        return diff_func(y, x)
+    return y
+
+###
+###
+###
+
+class Tensor():
+    device: DeviceLike
+    backward: Optional[Callable[[], None]]
+    data: Union[np.ndarray, Any]
+
+    def __init__(
+        self,
+        obj: Union[ArrayLike, Any, Tensor],
+        /,
+        *,
+        dtype: Optional[DTypeLike] = None,
+        device: DeviceLike = 'cpu',   
+        prev: Tuple = (),
+        requires_grad: bool = False,
+        
+        copy: bool = True,
+        order: Order = 'K',
+        subok: bool = False,
+        ndmin: int = 0,
+        blocking: bool = False
+    ) -> None:
+        #* Convert to xp.ndarray
+        if isinstance(obj, np.ndarray):
+            self.data = xp_array_to_device(obj, device)
+        else:
+            if cp is not None:
+                if isinstance(obj, cp.ndarray):
+                    self.data = xp_array_to_device(obj, device)
+                else:
+                    if device == "gpu":
+                        self.data = cp.array(obj, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin, blocking=blocking)
+                    else:
+                        self.data = np.array(obj, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin)
+            else:
+                if device == "cpu":
+                    self.data = np.array(obj, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin)
+                else:
+                    raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        #* Convert to dtype (if provided)
+        if dtype is not None and dtype != self.data.dtype:
+            self.data = self.data.astype(dtype) 
+        self.device = device
+        self.prev = prev
+        self.requires_grad = requires_grad
+        
+        if device == "cpu":
+            self.grad = np.zeros_like(self.data)
+        else:
+            if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+            self.grad = cp.zeros_like(self.data)
+        self.backward = None
+
+    ###
+    ###
+    ###
+
+    def get_device(self) -> DeviceLike:
+        return self.device
+    def is_device(self, device: DeviceLike) -> bool:
+        return self.device == device
+    def is_cpu(self) -> bool:
+        return self.device == "cpu"
+    def is_gpu(self) -> bool:
+        return self.device == "gpu"
+
+    ###
+    ### Property
+    ###
+
+    @property
+    def dtype(self) -> DTypeLike:
+        return self.data.dtype
+    
+    @property
+    def shape(self) -> ShapeLike:
+        return self.data.shape
+    
+    @property
+    def ndim(self) -> int:
+        return self.data.ndim
+    
+    @property
+    def size(self) -> int:
+        return self.data.size
+    
+    ###
+    ### Creation
+    ###
+
+    @staticmethod
+    def zeros_like(
+        a: Tensor,
+        /,
+        *, 
+        dtype: Optional[DTypeLike] = None, 
+        order: Order = 'K', 
+        subok: bool = True,
+        shape: Optional[AxisShapeLike] = None
+    ) -> Tensor:
+        return zeros_like(a, dtype=dtype, order=order, subok=subok, shape=shape)
+    
+    @staticmethod
+    def ones_like(
+        a: Tensor,
+        /,
+        *, 
+        dtype: Optional[DTypeLike] = None, 
+        order: Order = 'K', 
+        subok: bool = True,
+        shape: Optional[AxisShapeLike] = None
+    ) -> Tensor:
+        return ones_like(a, dtype=dtype, order=order, subok=subok, shape=shape)
+    
+    ###
+    ### Element-wise
+    ###
+
+    @staticmethod
+    def add(
+        x1: Tensor, 
+        x2: Tensor, 
+        /,
+        out: Optional[Union[np.ndarray, Any]] = None,
+        *,
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[ArrayLikeBool, bool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: Optional[DTypeLike] = None,
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_2in_1out(
+            add(x1, x2, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            add_diff, x1, x2, record_op
+        )
+    
+    @staticmethod
+    def subtract(
+        x1: Tensor, 
+        x2: Tensor, 
+        /,
+        out: Optional[Union[np.ndarray, Any]] = None,
+        *,
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[ArrayLikeBool, bool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: Optional[DTypeLike] = None,
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_2in_1out(
+            subtract(x1, x2, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            subtract_diff, x1, x2, record_op
+        )
+
+    @staticmethod
+    def multiply(
+        x1: Tensor, 
+        x2: Tensor, 
+        /,
+        out: Optional[Union[np.ndarray, Any]] = None,
+        *,
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[ArrayLikeBool, bool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: Optional[DTypeLike] = None,
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_2in_1out(
+            multiply(x1, x2, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            multiply_diff, x1, x2, record_op
+        )
+    
+    @staticmethod
+    def matmul(
+        x1: Tensor, 
+        x2: Tensor, 
+        /,
+        out: Optional[Union[np.ndarray, Any]] = None,
+        *,
+        in_place: bool = False,
+        record_op: bool = True,
+
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: Optional[DTypeLike] = None,
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_2in_1out(
+            matmul(x1, x2, out=out, in_place=in_place, casting=casting, order=order, dtype=dtype, subok=subok),
+            matmul_diff, x1, x2, record_op
+        )
+    
+    @staticmethod
+    def divide(
+        x1: Tensor, 
+        x2: Tensor, 
+        /,
+        out: Optional[Union[np.ndarray, Any]] = None,
+        *,
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[ArrayLikeBool, bool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: Optional[DTypeLike] = None,
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_2in_1out(
+            divide(x1, x2, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            divide_diff, x1, x2, record_op
+        )
+    
+    @staticmethod
+    def negative(
+        x: Tensor,
+        /,
+        out: Optional[Union[np.ndarray, Any]] = None, 
+        *,
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[ArrayLikeBool, bool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: Optional[DTypeLike] = None,
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_1in_1out(
+            negative(x, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            negative_diff, x, record_op
+        )
+    
+    ###
+    ### Exponents/Logarithms
+    ###
+
+    @staticmethod
+    def exp(
+        x: Tensor, 
+        /, 
+        out: Optional[Union[np.ndarray, Any]] = None,
+        *,
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[bool, ArrayLikeBool] = True, 
+        casting: Casting = 'same_kind',
+        order: Order = 'K', 
+        dtype: Optional[DTypeLike] = None, 
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_1in_1out(
+            exp(x, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            exp_diff, x, record_op
+        )
+    
+    ###
+    ### Comparison
+    ###
+
+    @staticmethod
+    @overload
+    def where(
+        condition: Union[ArrayLike, Tensor],
+        /
+    ) -> Tuple[Tensor, ...]: ...
+
+    @staticmethod
+    @overload
+    def where(
+        condition: Union[ArrayLike, Tensor],
+        x: Optional[Union[ArrayLike, Tensor]],
+        y: Optional[Union[ArrayLike, Tensor]],
+        /,
+    ) -> Tensor: ...
+
+    @staticmethod
+    def where(
+        condition: Union[ArrayLike, Tensor],
+        x: Optional[Union[ArrayLike, Tensor]] = None,
+        y: Optional[Union[ArrayLike, Tensor]] = None,
+        /
+    ) -> Union[Tuple[Tensor, ...], Tensor]:
+        device = "cpu"
+        if isinstance(condition, Tensor):
+            device = condition.device
+        if x and isinstance(x, Tensor):
+            if x.device != device:
+                raise RuntimeError("Arguments, as tensors, must have the same device.")
+        if y and isinstance(y, Tensor):
+            if y.device != device:
+                raise RuntimeError("Arguments, as tensors, must have the same device.")
+        return where(condition, x, y, device=device)
+
+    ###
+    ### Reduction
+    ###
+
+    @staticmethod
+    def max(
+        a: Tensor,
+        /,
+        *,
+        axis: Optional[ShapeLike] = None, 
+        out: Optional[Union[np.ndarray, Any]] = None, 
+        keepdims: bool = False, 
+        initial: Any = _NoValue, 
+        where: Union[bool, ArrayLikeBool] = True
+    ) -> Tensor:
+        return max(a, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
+    
+    @staticmethod
+    def maximum(
+        x1: Tensor,
+        x2: Tensor,
+        /,
+        out: Optional[np.ndarray] = None,
+        *,
+        where: Union[bool, ArrayLikeBool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: Optional[DTypeLike] = None,
+        subok: bool = True
+    ) -> Tensor:
+        return maximum(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+
+    ###
+    ### Dunder Operations
+    ###
+
+    def __add__(self, t: Tensor) -> Tensor:
+        return Tensor.add(self, t)
+    def __radd__(self, t: Tensor) -> Tensor:
+        return Tensor.add(t, self)
+    def __iadd__(self, t: Tensor) -> Tensor:
+        return Tensor.add(self, t, in_place=True)
+    
+    def __sub__(self, t: Tensor) -> Tensor:
+        return Tensor.subtract(self, t)
+    def __rsub__(self, t: Tensor) -> Tensor:
+        return Tensor.subtract(t, self)
+    def __isub__(self, t: Tensor) -> Tensor:
+        return Tensor.subtract(self, t, in_place=True)
+    
+    def __mul__(self, t: Tensor) -> Tensor:
+        return Tensor.multiply(self, t)
+    def __rmul__(self, t: Tensor) -> Tensor:
+        return Tensor.multiply(t, self)
+    def __imul__(self, t: Tensor) -> Tensor:
+        return Tensor.multiply(self, t, in_place=True)
+    
+    def __matmul__(self, t: Tensor) -> Tensor:
+        return Tensor.matmul(self, t)
+    def __rmatmul__(self, t: Tensor) -> Tensor:
+        return Tensor.matmul(t, self)
+    def __imatmul__(self, t: Tensor) -> Tensor:
+        return Tensor.matmul(self, t, in_place=True)
+    
+    def __truediv__(self, t: Tensor) -> Tensor:
+        return Tensor.divide(self, t)
+    def __rtruediv__(self, t: Tensor) -> Tensor:
+        return Tensor.divide(t, self)
+    def __itruediv__(self, t: Tensor) -> Tensor:
+        return Tensor.divide(self, t, in_place=True)
+
+    ###
+    ### Unary
+    ###
+
+    def __neg__(self) -> Tensor:
+        return Tensor.negative(self)
+
+    ###
+    ### Misc dunder
+    ###
+
+    def __repr__(self) -> str:
+        return f'Tensor({self.data}, device={self.device})'
