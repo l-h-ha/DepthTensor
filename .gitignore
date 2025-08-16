@@ -1,7 +1,0 @@
-.pyc
-*.venv
-*__pycache__
-
-src/DepthTensor.egg-info/
-build/
-dist/
