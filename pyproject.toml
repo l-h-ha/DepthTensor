@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "DepthTensor"
+version = "1.1.2"
+readme = "README.md"
+dependencies = [
+    "numpy"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest"
+]
+gpu = [
+    "cupy-cuda12x"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

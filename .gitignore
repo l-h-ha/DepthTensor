@@ -5,5 +5,3 @@
 src/DepthTensor.egg-info/
 build/
 dist/
-
-pyproject.toml
