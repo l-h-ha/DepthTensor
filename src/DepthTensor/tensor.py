@@ -670,3 +670,6 @@ class Tensor():
 
     def __repr__(self) -> str:
         return f'Tensor({self.data}, device={self.device})'
+    
+    def __hash__(self) -> int:
+        return id(self)
