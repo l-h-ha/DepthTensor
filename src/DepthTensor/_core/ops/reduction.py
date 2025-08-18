@@ -10,7 +10,8 @@ from ...typing import (
     ArrayLikeBool,
     Casting,
     Order,
-    DTypeLike
+    DTypeLike,
+    AxisShapeLike
 )
 
 from ..exceptions import (
@@ -28,6 +29,25 @@ _NoValue = object()
 ###
 ###
 ###
+
+def sum(
+    a: TensorLike,
+    /,
+    *,
+    axis: Optional[AxisShapeLike] = None,
+    dtype: Optional[DTypeLike] = None,
+    out: Optional[Union[np.ndarray, Any]] = None,
+    keepdims: bool = True,
+    initial: Any = _NoValue,
+    where: Union[bool, ArrayLikeBool] = True
+) -> TensorLike:
+    from ...tensor import Tensor
+    if a.is_cpu():
+        y = np.sum(a.data, axis=axis, dtype=dtype, out=out, keepdims=keepdims, initial=initial, where=where)
+    else:
+        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = cp.sum(a.data, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
+    return Tensor(y, device=a.device)
 
 def max(
     a: TensorLike,
@@ -72,5 +92,5 @@ def maximum(
 ###
 
 __all__ = [
-    'max', 'maximum'
+    'max', 'maximum', 'sum'
 ]

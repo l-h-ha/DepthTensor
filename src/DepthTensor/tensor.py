@@ -1,13 +1,22 @@
 from __future__ import annotations
 from typing import (
-    Union, Optional, Any,
-    Tuple, Callable, overload
+    Union, 
+    Optional, 
+    Any,
+    Tuple, 
+    Callable, 
+    overload
 )
 
 from .typing import (
-    ArrayLike, DTypeLike, Order,
-    DeviceLike, ShapeLike, ArrayLikeBool,
-    Casting, AxisShapeLike
+    ArrayLike, 
+    DTypeLike,
+    Order,
+    DeviceLike, 
+    ShapeLike, 
+    ArrayLikeBool,
+    Casting, 
+    AxisShapeLike
 )
 
 from ._core import (
@@ -19,20 +28,20 @@ from ._core import (
 
     #* elementwise
     add, subtract, multiply, matmul, divide,
-    negative,
+    negative, clip, sign, abs,
 
     #* exponents/logarithm
-    exp,
+    exp, sqrt,
 
     #* diff
     add_diff, subtract_diff, multiply_diff, matmul_diff, divide_diff,
-    negative_diff, exp_diff,
+    negative_diff, exp_diff, sqrt_diff, sign_diff, abs_diff,
 
     #* comparison
-    where,
+    where, equal, not_equal, greater, greater_equal, less, less_equal,
 
     #* reduction
-    max, maximum
+    max, maximum, sum
 )
 
 import numpy as np
@@ -84,24 +93,28 @@ class Tensor():
         #* Convert to xp.ndarray
         if isinstance(obj, np.ndarray):
             self.data = xp_array_to_device(obj, device)
+            self.device = "cpu"
         else:
             if cp is not None:
                 if isinstance(obj, cp.ndarray):
                     self.data = xp_array_to_device(obj, device)
+                    self.device = "gpu"
                 else:
                     if device == "gpu":
                         self.data = cp.array(obj, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin, blocking=blocking)
+                        self.device = "gpu"
                     else:
                         self.data = np.array(obj, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin)
+                        self.device = "cpu"
             else:
                 if device == "cpu":
                     self.data = np.array(obj, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin)
+                    self.device = "cpu"
                 else:
                     raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         #* Convert to dtype (if provided)
         if dtype is not None and dtype != self.data.dtype:
             self.data = self.data.astype(dtype) 
-        self.device = device
         self.prev = prev
         self.requires_grad = requires_grad
         
@@ -301,6 +314,62 @@ class Tensor():
             negative_diff, x, record_op
         )
     
+    @staticmethod
+    def clip(
+        a: Tensor,
+        a_min: Tensor,
+        a_max: Tensor,
+        /,
+        out: Optional[ArrayLike] = None,
+        *,
+        where: Union[bool, ArrayLikeBool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: Optional[DTypeLike] = None,
+        subok: bool = True
+    ) -> Tensor:
+        return clip(a, a_min, a_max, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    
+    @staticmethod
+    def sign(
+        x: Tensor,
+        /,
+        out: Optional[Union[np.ndarray, Any]] = None, 
+        *,
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[ArrayLikeBool, bool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: Optional[DTypeLike] = None,
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_1in_1out(
+            sign(x, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            sign_diff, x, record_op
+        )
+    
+    @staticmethod
+    def abs(
+        x: Tensor,
+        /,
+        out: Optional[Union[np.ndarray, Any]] = None, 
+        *,
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[ArrayLikeBool, bool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: Optional[DTypeLike] = None,
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_1in_1out(
+            abs(x, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            abs_diff, x, record_op
+        )
+
     ###
     ### Exponents/Logarithms
     ###
@@ -323,6 +392,26 @@ class Tensor():
         return _wrapper_1in_1out(
             exp(x, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
             exp_diff, x, record_op
+        )
+    
+    @staticmethod
+    def sqrt(
+        x: Tensor, 
+        /, 
+        out: Optional[Union[np.ndarray, Any]] = None,
+        *,
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[bool, ArrayLikeBool] = True, 
+        casting: Casting = 'same_kind',
+        order: Order = 'K', 
+        dtype: Optional[DTypeLike] = None, 
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_1in_1out(
+            sqrt(x, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            sqrt_diff, x, record_op
         )
     
     ###
@@ -362,10 +451,114 @@ class Tensor():
             if y.device != device:
                 raise RuntimeError("Arguments, as tensors, must have the same device.")
         return where(condition, x, y, device=device)
+    
+    @staticmethod
+    def equal(
+        x1: Tensor,
+        x2: Tensor,
+        /,
+        out: Optional[ArrayLikeBool] = None,
+        *,
+        where: Union[bool, ArrayLikeBool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: None = None,
+        subok: bool = True
+    ) -> Tensor:
+        return equal(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    
+    @staticmethod
+    def not_equal(
+        x1: Tensor,
+        x2: Tensor,
+        /,
+        out: Optional[ArrayLikeBool] = None,
+        *,
+        where: Union[bool, ArrayLikeBool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: None = None,
+        subok: bool = True
+    ) -> Tensor:
+        return not_equal(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    
+    @staticmethod
+    def greater(
+        x1: Tensor,
+        x2: Tensor,
+        /,
+        out: Optional[ArrayLikeBool] = None,
+        *,
+        where: Union[bool, ArrayLikeBool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: None = None,
+        subok: bool = True
+    ) -> Tensor:
+        return greater(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+
+    @staticmethod
+    def greater_equal(
+        x1: Tensor,
+        x2: Tensor,
+        /,
+        out: Optional[ArrayLikeBool] = None,
+        *,
+        where: Union[bool, ArrayLikeBool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: None = None,
+        subok: bool = True
+    ) -> Tensor:
+        return greater_equal(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+
+    @staticmethod
+    def less(
+        x1: Tensor,
+        x2: Tensor,
+        /,
+        out: Optional[ArrayLikeBool] = None,
+        *,
+        where: Union[bool, ArrayLikeBool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: None = None,
+        subok: bool = True
+    ) -> Tensor:
+        return less(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+
+    @staticmethod
+    def less_equal(
+        x1: Tensor,
+        x2: Tensor,
+        /,
+        out: Optional[ArrayLikeBool] = None,
+        *,
+        where: Union[bool, ArrayLikeBool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: None = None,
+        subok: bool = True
+    ) -> Tensor:
+        return less_equal(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
     ###
     ### Reduction
     ###
+
+    @staticmethod
+    def sum(
+        a: Tensor,
+        /,
+        *,
+        axis: Optional[AxisShapeLike] = None,
+        dtype: Optional[DTypeLike] = None,
+        out: Optional[Union[np.ndarray, Any]] = None,
+        keepdims: bool = True,
+        initial: Any = _NoValue,
+        where: Union[bool, ArrayLikeBool] = True
+    ) -> Tensor:
+        return sum(a, axis=axis, dtype=dtype, out=out, keepdims=keepdims, initial=initial, where=where)
 
     @staticmethod
     def max(
@@ -437,6 +630,36 @@ class Tensor():
     ###
     ### Unary
     ###
+
+    def __eq__(self, value: Any) -> "Tensor": # type: ignore[override]
+        if not isinstance(value, Tensor):
+            return NotImplemented
+        return equal(self, value)
+    
+    def __ne__(self, value: Any) -> "Tensor": # type: ignore[override]
+        if not isinstance(value, Tensor):
+            return NotImplemented
+        return not_equal(self, value)
+    
+    def __gt__(self, value: Any) -> "Tensor": # type: ignore[override]
+        if not isinstance(value, Tensor):
+            return NotImplemented
+        return greater(self, value)
+
+    def __ge__(self, value: Any) -> "Tensor": # type: ignore[override]
+        if not isinstance(value, Tensor):
+            return NotImplemented
+        return greater_equal(self, value)
+
+    def __lt__(self, value: Any) -> "Tensor": # type: ignore[override]
+        if not isinstance(value, Tensor):
+            return NotImplemented
+        return less(self, value)
+
+    def __le__(self, value: Any) -> "Tensor": # type: ignore[override]
+        if not isinstance(value, Tensor):
+            return NotImplemented
+        return less_equal(self, value)
 
     def __neg__(self) -> Tensor:
         return Tensor.negative(self)

@@ -66,6 +66,23 @@ def negative_diff(result: TensorLike, x: TensorLike) -> TensorLike:
     result.backward = backward
     return result
 
+def sign_diff(result: TensorLike, x: TensorLike) -> TensorLike:
+    if not result.requires_grad: return result
+    def backward() -> None:
+        if x.requires_grad:
+            x.grad += sum_to_shape(result.grad * 0, x.shape, x.device)
+    result.backward = backward
+    return result
+
+def abs_diff(result: TensorLike, x: TensorLike) -> TensorLike:
+    if not result.requires_grad: return result
+    def backward() -> None:
+        if x.requires_grad:
+            # TODO: Handle jump discontinuity
+            x.grad += sum_to_shape(result.grad * result.data / x.data, x.shape, x.device)
+    result.backward = backward
+    return result
+
 ###
 ### Exponents/Logarithms
 ###
@@ -78,11 +95,19 @@ def exp_diff(result: TensorLike, x: TensorLike) -> TensorLike:
     result.backward = backward
     return result
 
+def sqrt_diff(result: TensorLike, x: TensorLike) -> TensorLike:
+    if not result.requires_grad: return result
+    def backward() -> None:
+        if x.requires_grad:
+            x.grad += sum_to_shape(result.grad * (0.5*result.data**(-0.5)), x.shape, x.device)
+    result.backward = backward
+    return result
+
 ###
 ###
 ###
 
 __all__ = [
     'add_diff', 'subtract_diff', 'multiply_diff', 'matmul_diff', 'divide_diff',
-    'negative_diff', 'exp_diff'
+    'negative_diff', 'exp_diff', 'sqrt_diff', 'sign_diff', 'abs_diff'
 ]

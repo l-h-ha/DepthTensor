@@ -1,8 +1,16 @@
-from typing import Optional, Union, Any
+from typing import (
+    Optional, 
+    Union, 
+    Any
+)
 
 from ...typing import (
-    TensorLike, DTypeLike, Casting,
-    Order, ArrayLikeBool
+    TensorLike, 
+    DTypeLike, 
+    Casting,
+    Order, 
+    ArrayLikeBool,
+    ArrayLike
 )
 
 from ..exceptions import (
@@ -167,6 +175,77 @@ def negative(
         return x
     return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
 
+def sign(
+    x: TensorLike,
+    /,
+    out: Optional[Union[np.ndarray, Any]] = None, 
+    *,
+    in_place: bool = False,
+    where: Union[ArrayLikeBool, bool] = True,
+    casting: Casting = 'same_kind',
+    order: Order = 'K',
+    dtype: Optional[DTypeLike] = None,
+    subok: bool = True
+) -> TensorLike:
+    from ...tensor import Tensor
+    if x.is_cpu():
+        y = np.sign(x.data, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
+    else:
+        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = cp.sign(x.data, out=out, dtype=dtype, casting=casting)
+    if in_place:
+        x.data = y
+        return x
+    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+
+def abs(
+    x: TensorLike,
+    /,
+    out: Optional[Union[np.ndarray, Any]] = None, 
+    *,
+    in_place: bool = False,
+    where: Union[ArrayLikeBool, bool] = True,
+    casting: Casting = 'same_kind',
+    order: Order = 'K',
+    dtype: Optional[DTypeLike] = None,
+    subok: bool = True
+) -> TensorLike:
+    from ...tensor import Tensor
+    if x.is_cpu():
+        y = np.abs(x.data, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
+    else:
+        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = cp.abs(x.data, out=out, dtype=dtype, casting=casting)
+    if in_place:
+        x.data = y
+        return x
+    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+
+def clip(
+    a: TensorLike,
+    a_min: TensorLike,
+    a_max: TensorLike,
+    /,
+    out: Optional[ArrayLike] = None,
+    *,
+    where: Union[bool, ArrayLikeBool] = True,
+    casting: Casting = 'same_kind',
+    order: Order = 'K',
+    dtype: Optional[DTypeLike] = None,
+    subok: bool = True
+) -> TensorLike:
+    from ...tensor import Tensor
+    if not (a.device == a_min.device == a_max.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
+    if a.is_cpu():
+        if out is None:
+            y = np.clip(a.data, a_min.data, a_max.data, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+        else:
+            y = np.clip(a.data, a_min.data, a_max.data, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    else:
+        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = cp.clip(a.data, a_min.data, a_max.data, out=out)
+    return Tensor(y)
+
 ###
 ### Exponents/Logarithms
 ###
@@ -194,13 +273,84 @@ def exp(
         return x
     return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
 
+def sqrt(
+    x: TensorLike, 
+    /, 
+    out: Optional[Union[np.ndarray, Any]] = None,
+    *,
+    in_place: bool = False,
+    where: Union[bool, ArrayLikeBool] = True, 
+    casting: Casting = 'same_kind',
+    order: Order = 'K', 
+    dtype: Optional[DTypeLike] = None, 
+    subok: bool = True
+) -> TensorLike:
+    from ...tensor import Tensor
+    if x.is_cpu():
+        y = np.sqrt(x.data, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    else:
+        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = cp.sqrt(x.data, out=out, casting=casting, dtype=dtype)
+    if in_place:
+        x.data = y
+        return x
+    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+
+def log(
+    x: TensorLike, 
+    /, 
+    out: Optional[Union[np.ndarray, Any]] = None,
+    *,
+    in_place: bool = False,
+    where: Union[bool, ArrayLikeBool] = True, 
+    casting: Casting = 'same_kind',
+    order: Order = 'K', 
+    dtype: Optional[DTypeLike] = None, 
+    subok: bool = True
+) -> TensorLike:
+    from ...tensor import Tensor
+    if x.is_cpu():
+        y = np.log(x.data, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    else:
+        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = cp.log(x.data, out=out, casting=casting, dtype=dtype)
+    if in_place:
+        x.data = y
+        return x
+    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+
+def square(
+    x: TensorLike, 
+    /, 
+    out: Optional[Union[np.ndarray, Any]] = None,
+    *,
+    in_place: bool = False,
+    where: Union[bool, ArrayLikeBool] = True, 
+    casting: Casting = 'same_kind',
+    order: Order = 'K', 
+    dtype: Optional[DTypeLike] = None, 
+    subok: bool = True
+) -> TensorLike:
+    from ...tensor import Tensor
+    if x.is_cpu():
+        y = np.square(x.data, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    else:
+        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = cp.square(x.data, out=out, casting=casting, dtype=dtype)
+    if in_place:
+        x.data = y
+        return x
+    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+
 ###
 ###
 ###
 
 __all__ = [
     'add', 'subtract', 'multiply', 'matmul', 'divide',
-    'negative',
+    'negative', 'sign', 'abs',
 
-    'exp',
+    'exp', 'sqrt', 'log', 'square',
+
+    'clip'
 ]
