@@ -1,7 +1,8 @@
 from typing import (
     Optional, 
     Union, 
-    Any
+    Any,
+    TypeVar
 )
 
 from ...typing import (
@@ -11,12 +12,20 @@ from ...typing import (
     Casting,
     Order,
     DTypeLike,
-    AxisShapeLike
+    AxisShapeLike,
+    OperandLike,
+    DeviceLike,
+    ArrayLike
 )
 
 from ..exceptions import (
     CuPyNotFound, CUPY_NOT_FOUND_MSG,
-    DeviceMismatch, DEVICE_MISMATCH_MSG
+    DeviceMismatch, DEVICE_MISMATCH_MSG,
+    OperandMismatch, OPERAND_MISMATCH_MSG
+)
+
+from ..utils import (
+    to_xp_array
 )
 
 import numpy as np
@@ -31,9 +40,10 @@ _NoValue = object()
 ###
 
 def sum(
-    a: TensorLike,
+    a: OperandLike,
     /,
     *,
+    device: DeviceLike = "cpu",
     axis: Optional[AxisShapeLike] = None,
     dtype: Optional[DTypeLike] = None,
     out: Optional[Union[np.ndarray, Any]] = None,
@@ -42,17 +52,27 @@ def sum(
     where: Union[bool, ArrayLikeBool] = True
 ) -> TensorLike:
     from ...tensor import Tensor
-    if a.is_cpu():
-        y = np.sum(a.data, axis=axis, dtype=dtype, out=out, keepdims=keepdims, initial=initial, where=where)
+    if isinstance(a, Tensor):
+        device_op = a.device
+    else:
+        device_op = device
+
+    arr = to_xp_array(a, device=device_op)
+    if device_op == "cpu":
+        if out is None:
+            y = np.sum(arr, axis=axis, dtype=dtype, keepdims=keepdims, initial=initial, where=where)
+        else:
+            y = np.sum(arr, axis=axis, dtype=dtype, out=out, keepdims=keepdims, initial=initial, where=where)
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.sum(a.data, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
-    return Tensor(y, device=a.device)
+        y = cp.sum(arr, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
+    return Tensor(y, device=device_op)
 
 def max(
-    a: TensorLike,
+    a: OperandLike,
     /,
     *,
+    device: DeviceLike = "cpu",
     axis: Optional[ShapeLike] = None, 
     out: Optional[Union[np.ndarray, Any]] = None, 
     keepdims: bool = False, 
@@ -60,19 +80,26 @@ def max(
     where: Union[bool, ArrayLikeBool] = True
 ) -> TensorLike:
     from ...tensor import Tensor
-    if a.is_cpu():
-        y = np.max(a.data, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
+    if isinstance(a, Tensor):
+        device_op = a.device
+    else:
+        device_op = device
+
+    arr = to_xp_array(a, device=device_op)
+    if device_op == "cpu":
+        y = np.max(arr, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.max(a.data, axis=axis, out=out, keepdims=keepdims)
-    return Tensor(y, device=a.device)
+        y = cp.max(arr, axis=axis, out=out, keepdims=keepdims)
+    return Tensor(y, device=device_op)
 
 def maximum(
-    x1: TensorLike,
-    x2: TensorLike,
+    x1: OperandLike,
+    x2: OperandLike,
     /,
     out: Optional[np.ndarray] = None,
     *,
+    device: DeviceLike = "cpu",
     where: Union[bool, ArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
@@ -80,12 +107,25 @@ def maximum(
     subok: bool = True
 ) -> TensorLike:
     from ...tensor import Tensor
-    if not x1.is_device(x2.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
-    if x1.is_cpu():
-        y = np.maximum(x1.data, x2.data, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
+    if isinstance(x1, Tensor) and isinstance(x2, Tensor):
+        if not x1.is_device(x2.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
+        is_tensor_op = True
     else:
-        y = np.maximum(x1.data, x2.data, out=out, dtype=dtype, casting=casting)
-    return Tensor(y, device=x1.device)
+        if isinstance(x1, Tensor) or isinstance(x2, Tensor):
+            raise OperandMismatch(OPERAND_MISMATCH_MSG)
+        is_tensor_op = False
+    
+    if is_tensor_op and isinstance(x1, Tensor):
+        device_op = x1.device
+    else:
+        device_op = device
+
+    x1, x2 = to_xp_array(x1, device=device_op), to_xp_array(x2, device=device_op)
+    if device_op == "cpu":
+        y = np.maximum(x1, x2, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
+    else:
+        y = np.maximum(x1, x2, out=out, dtype=dtype, casting=casting)
+    return Tensor(y, device=device_op)
 
 ###
 ###

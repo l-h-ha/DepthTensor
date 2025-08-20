@@ -1,7 +1,19 @@
-from typing import Any, Union, Tuple
+from typing import (
+    Any, 
+    Union, 
+    Tuple,
+    Optional
+)
 
-from ..typing import DeviceLike
-from .exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG
+from ..typing import (
+    DeviceLike, 
+    TensorLike, 
+    ArrayLike
+)
+
+from .exceptions import (
+    CuPyNotFound, CUPY_NOT_FOUND_MSG
+)
 
 import numpy as np
 try:
@@ -81,11 +93,36 @@ def sum_to_shape(result: Any, target_shape: Tuple, device: DeviceLike) -> Any:
             result = cp.sum(result, axis=tuple(stretched_axes), keepdims=True)
     return result
 
+def to_xp_array(a: Union[ArrayLike, TensorLike], device: Optional[DeviceLike] = None) -> ArrayLike:
+    """
+    Convert data to numpy.typing.ArrayLike
+    """
+    from ..tensor import Tensor
+    if isinstance(a, Tensor):
+        y = a.data
+    else:
+        y = a
+    if device is not None:
+        if isinstance(y, np.ndarray):
+            if device == "cpu":
+                return y
+            if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+            return cp.asarray(y)
+        else:
+            if cp is not None and isinstance(y, cp.ndarray):
+                if device == "gpu":
+                    return y
+                return cp.asnumpy(y)
+            else:
+                return y
+    return y
+
 ###
 ### 
 ###
 
 __all__ = [
     'xp_array_to_device',
-    'sum_to_shape'
+    'sum_to_shape',
+    'to_xp_array'
 ]

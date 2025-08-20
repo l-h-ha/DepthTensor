@@ -12,8 +12,7 @@ from ...typing import (
     TensorLike,
     AxisLike,
     int64,
-    DeviceLike,
-    floating
+    DeviceLike
 )
 
 from ..exceptions import (
@@ -31,40 +30,46 @@ except (ImportError, ModuleNotFoundError):
 ###
 
 @overload
-def rand() -> TensorLike: ...
+def rand(*, device: DeviceLike = "cpu") -> TensorLike: ...
 @overload
 def rand(
     *d: int,
-    dtype: Optional[DTypeLike] = None
+    dtype: Optional[DTypeLike] = None,
+    device: DeviceLike = "cpu"
 ) -> TensorLike: ... 
 def rand(
     *d: int,
-    dtype: Optional[DTypeLike] = None
+    dtype: Optional[DTypeLike] = None,
+    device: DeviceLike = "cpu"
 ) -> TensorLike:
     from ...tensor import Tensor
-    if dtype is None:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        return Tensor(cp.random.rand(*d, dtype=dtype))
+    if device == "cpu":
+        y = random.rand(*d)
     else:
-        return Tensor(np.random.rand(*d))
+        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = cp.random.rand(*d, dtype=dtype)
+    return Tensor(y, dtype=dtype)
     
 @overload
-def randn() -> TensorLike: ...
+def randn(*, device: DeviceLike = "cpu") -> TensorLike: ...
 @overload
 def randn(
     *d: int,
-    dtype: Optional[DTypeLike] = None
+    dtype: Optional[DTypeLike] = None,
+    device: DeviceLike = "cpu"
 ) -> TensorLike: ... 
 def randn(
     *d: int,
-    dtype: Optional[DTypeLike] = None
+    dtype: Optional[DTypeLike] = None,
+    device: DeviceLike = "cpu"
 ) -> TensorLike:
     from ...tensor import Tensor
-    if dtype is None:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        return Tensor(cp.random.randn(*d, dtype=dtype))
+    if device == "cpu":
+        y = random.randn(*d)
     else:
-        return Tensor(random.randn(*d))
+        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = cp.random.randn(*d, dtype=dtype)
+    return Tensor(y, dtype=dtype)
     
 def randint(
     low: int,
@@ -81,31 +86,19 @@ def randint(
         y = cp.random.randint(low=low, high=high, size=size, dtype=dtype)
     return Tensor(y)
 
-@overload
-def uniform(
-    low: float = 0.0,
-    high: float = 1.0,
-    size: Optional[AxisLike] = None
-): ...
-@overload
 def uniform(
     low: float = 0.0,
     high: float = 1.0,
     size: Optional[AxisLike] = None,
-    dtype: Optional[Type[float]] = None,
-): ...
-def uniform(
-    low: float = 0.0,
-    high: float = 1.0,
-    size: Optional[AxisLike] = None,
-    dtype: Optional[Type[float]] = None,
+    *,
+    device: DeviceLike = "cpu"
 ):
     from ...tensor import Tensor
-    if dtype is None:
+    if device == "cpu":
         y = random.uniform(low=low, high=high, size=size)
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.random.uniform(low=low, high=high, size=size, dtype=dtype)
+        y = cp.random.uniform(low=low, high=high, size=size)
     return Tensor(y)
 
 ###

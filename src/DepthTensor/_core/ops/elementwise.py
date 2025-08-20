@@ -10,12 +10,19 @@ from ...typing import (
     Casting,
     Order, 
     ArrayLikeBool,
-    ArrayLike
+    ArrayLike,
+    OperandLike,
+    DeviceLike
 )
 
 from ..exceptions import (
     DeviceMismatch, DEVICE_MISMATCH_MSG,
-    CuPyNotFound, CUPY_NOT_FOUND_MSG
+    CuPyNotFound, CUPY_NOT_FOUND_MSG,
+    OperandMismatch, OPERAND_MISMATCH_MSG
+)
+
+from ..utils import (
+    to_xp_array
 )
 
 import numpy as np
@@ -28,12 +35,14 @@ except (ImportError, ModuleNotFoundError):
 ### Arithmetics
 ###
 
-def add(
-    x1: TensorLike, 
-    x2: TensorLike, 
+def wrapper_2in_1out(
+    x1: OperandLike, 
+    x2: OperandLike, 
     /,
     out: Optional[Union[np.ndarray, Any]] = None,
     *,
+    func_name: str,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     where: Union[ArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
@@ -41,24 +50,100 @@ def add(
     dtype: Optional[DTypeLike] = None,
     subok: bool = True
 ) -> TensorLike:
-    if not x1.is_device(x2.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
     from ...tensor import Tensor
-    if x1.is_cpu():
-        y = np.add(x1.data, x2.data, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
+    if isinstance(x1, Tensor) and isinstance(x2, Tensor):
+        if not x1.is_device(x2.device):
+            raise DeviceMismatch(DEVICE_MISMATCH_MSG)
+        else:
+            is_tensor_op = True
+    else:
+        if isinstance(x1, Tensor) or isinstance(x2, Tensor):
+            raise OperandMismatch(OPERAND_MISMATCH_MSG)
+        is_tensor_op = False    
+    #* Either tensor-tensor op or array-array op.
+
+    #* If its tensor-tensor op, device is decided by x1.device, else, its by the device argument.
+    if is_tensor_op and isinstance(x1, Tensor):
+        device_op = x1.device
+    else:
+        device_op = device
+
+    a1, a2 = to_xp_array(x1, device=device_op), to_xp_array(x2, device=device_op)
+    if device_op == "cpu":
+        y = getattr(np, func_name)(a1, a2, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.add(x1.data, x2.data, out=out, dtype=dtype, casting=casting)
-    if in_place:
+        y = getattr(cp, func_name)(a1, a2, out=out, dtype=dtype, casting=casting)
+
+    if is_tensor_op and in_place and isinstance(x1, Tensor):
         x1.data = y
         return x1
-    return Tensor(y, device=x1.device, prev=(x1, x2), requires_grad=x1.requires_grad or x2.requires_grad)
+    
+    if isinstance(x1, Tensor) and isinstance(x2, Tensor):
+        requires_grad = x1.requires_grad or x2.requires_grad
+    else:
+        requires_grad = False
+    return Tensor(y, device=device_op, prev=(x1, x2), requires_grad=requires_grad)
+
+def wrapper_1in_1out(
+    x: OperandLike,
+    /,
+    out: Optional[Union[np.ndarray, Any]] = None, 
+    *,
+    func_name: str,
+    device: DeviceLike = "cpu",
+    in_place: bool = False,
+    where: Union[ArrayLikeBool, bool] = True,
+    casting: Casting = 'same_kind',
+    order: Order = 'K',
+    dtype: Optional[DTypeLike] = None,
+    subok: bool = True
+) -> TensorLike:
+    from ...tensor import Tensor
+    if isinstance(x, Tensor):
+        device_op = x.device
+    else:
+        device_op = device
+
+    a = to_xp_array(x, device=device_op)
+    if device_op:
+        y = getattr(np, func_name)(a, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
+    else:
+        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = getattr(cp, func_name)(a, out=out, dtype=dtype, casting=casting)
+
+    if isinstance(x, Tensor):
+        if in_place:
+            x.data = y
+            return x
+        requires_grad = x.requires_grad
+    else:
+        requires_grad = False
+    return Tensor(y, device=device_op, prev=(x,), requires_grad=requires_grad)
+
+def add(
+    x1: OperandLike, 
+    x2: OperandLike, 
+    /,
+    out: Optional[Union[np.ndarray, Any]] = None,
+    *,
+    device: DeviceLike = "cpu",
+    in_place: bool = False,
+    where: Union[ArrayLikeBool, bool] = True,
+    casting: Casting = 'same_kind',
+    order: Order = 'K',
+    dtype: Optional[DTypeLike] = None,
+    subok: bool = True
+) -> TensorLike:
+    return wrapper_2in_1out(x1, x2, out=out, func_name="add", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def subtract(
-    x1: TensorLike, 
-    x2: TensorLike, 
+    x1: OperandLike, 
+    x2: OperandLike, 
     /,
     out: Optional[Union[np.ndarray, Any]] = None,
     *,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     where: Union[ArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
@@ -66,24 +151,15 @@ def subtract(
     dtype: Optional[DTypeLike] = None,
     subok: bool = True
 ) -> TensorLike:
-    if not x1.is_device(x2.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
-    from ...tensor import Tensor
-    if x1.is_cpu():
-        y = np.subtract(x1.data, x2.data, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
-    else:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.subtract(x1.data, x2.data, out=out, dtype=dtype, casting=casting)
-    if in_place:
-        x1.data = y
-        return x1
-    return Tensor(y, device=x1.device, prev=(x1, x2), requires_grad=x1.requires_grad or x2.requires_grad)
+    return wrapper_2in_1out(x1, x2, out=out, func_name="subtract", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def multiply(
-    x1: TensorLike, 
-    x2: TensorLike, 
+    x1: OperandLike, 
+    x2: OperandLike, 
     /,
     out: Optional[Union[np.ndarray, Any]] = None,
     *,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     where: Union[ArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
@@ -91,48 +167,30 @@ def multiply(
     dtype: Optional[DTypeLike] = None,
     subok: bool = True
 ) -> TensorLike:
-    if not x1.is_device(x2.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
-    from ...tensor import Tensor
-    if x1.is_cpu():
-        y = np.multiply(x1.data, x2.data, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
-    else:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.multiply(x1.data, x2.data, out=out, dtype=dtype, casting=casting)
-    if in_place:
-        x1.data = y
-        return x1
-    return Tensor(y, device=x1.device, prev=(x1, x2), requires_grad=x1.requires_grad or x2.requires_grad)
+    return wrapper_2in_1out(x1, x2, out=out, func_name="multiply", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def matmul(
-    x1: TensorLike, 
-    x2: TensorLike, 
+    x1: OperandLike, 
+    x2: OperandLike, 
     /,
     out: Optional[Union[np.ndarray, Any]] = None,
     *,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
     subok: bool = True
 ) -> TensorLike:
-    if not x1.is_device(x2.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
-    from ...tensor import Tensor
-    if x1.is_cpu():
-        y = np.matmul(x1.data, x2.data, out=out, casting=casting, order=order, dtype=dtype, subok=subok)
-    else:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.matmul(x1.data, x2.data, out=out, dtype=dtype, casting=casting)
-    if in_place:
-        x1.data = y
-        return x1
-    return Tensor(y, device=x1.device, prev=(x1, x2), requires_grad=x1.requires_grad or x2.requires_grad)
+    return wrapper_2in_1out(x1, x2, out=out, func_name="matmul", device=device, in_place=in_place, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def divide(
-    x1: TensorLike, 
-    x2: TensorLike, 
+    x1: OperandLike, 
+    x2: OperandLike, 
     /,
     out: Optional[Union[np.ndarray, Any]] = None,
     *,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     where: Union[ArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
@@ -140,23 +198,14 @@ def divide(
     dtype: Optional[DTypeLike] = None,
     subok: bool = True
 ) -> TensorLike:
-    if not x1.is_device(x2.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
-    from ...tensor import Tensor
-    if x1.is_cpu():
-        y = np.divide(x1.data, x2.data, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
-    else:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.divide(x1.data, x2.data, out=out, dtype=dtype, casting=casting)
-    if in_place:
-        x1.data = y
-        return x1
-    return Tensor(y, device=x1.device, prev=(x1, x2), requires_grad=x1.requires_grad or x2.requires_grad)
+    return wrapper_2in_1out(x1, x2, out=out, func_name="divide", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def negative(
-    x: TensorLike,
+    x: OperandLike,
     /,
     out: Optional[Union[np.ndarray, Any]] = None, 
     *,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     where: Union[ArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
@@ -164,22 +213,14 @@ def negative(
     dtype: Optional[DTypeLike] = None,
     subok: bool = True
 ) -> TensorLike:
-    from ...tensor import Tensor
-    if x.is_cpu():
-        y = np.negative(x.data, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
-    else:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.negative(x.data, out=out, dtype=dtype, casting=casting)
-    if in_place:
-        x.data = y
-        return x
-    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+    return wrapper_1in_1out(x, out=out, func_name="negative", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def sign(
-    x: TensorLike,
+    x: OperandLike,
     /,
     out: Optional[Union[np.ndarray, Any]] = None, 
     *,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     where: Union[ArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
@@ -187,22 +228,14 @@ def sign(
     dtype: Optional[DTypeLike] = None,
     subok: bool = True
 ) -> TensorLike:
-    from ...tensor import Tensor
-    if x.is_cpu():
-        y = np.sign(x.data, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
-    else:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.sign(x.data, out=out, dtype=dtype, casting=casting)
-    if in_place:
-        x.data = y
-        return x
-    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+    return wrapper_1in_1out(x, out=out, func_name="sign", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def abs(
-    x: TensorLike,
+    x: OperandLike,
     /,
     out: Optional[Union[np.ndarray, Any]] = None, 
     *,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     where: Union[ArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
@@ -210,24 +243,16 @@ def abs(
     dtype: Optional[DTypeLike] = None,
     subok: bool = True
 ) -> TensorLike:
-    from ...tensor import Tensor
-    if x.is_cpu():
-        y = np.abs(x.data, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
-    else:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.abs(x.data, out=out, dtype=dtype, casting=casting)
-    if in_place:
-        x.data = y
-        return x
-    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+    return wrapper_1in_1out(x, out=out, func_name="abs", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def clip(
-    a: TensorLike,
-    a_min: TensorLike,
-    a_max: TensorLike,
+    a: OperandLike,
+    a_min: OperandLike,
+    a_max: OperandLike,
     /,
     out: Optional[ArrayLike] = None,
     *,
+    device: DeviceLike = "cpu",
     where: Union[bool, ArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
@@ -235,15 +260,28 @@ def clip(
     subok: bool = True
 ) -> TensorLike:
     from ...tensor import Tensor
-    if not (a.device == a_min.device == a_max.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
-    if a.is_cpu():
+    if isinstance(a, Tensor) and isinstance(a_min, Tensor) and isinstance(a_max, Tensor):
+        if not (a.device == a_min.device == a_max.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
+        is_tensor_op = True
+    else:
+        if isinstance(a, Tensor) or isinstance(a_min, Tensor) or isinstance(a_max, Tensor): 
+            raise OperandMismatch(OPERAND_MISMATCH_MSG)
+        is_tensor_op = False
+    
+    if is_tensor_op and isinstance(a, Tensor):
+        device_op = a.device
+    else:
+        device_op = device
+
+    arr_a, arr_min, arr_max = to_xp_array(a, device=device_op), to_xp_array(a_min, device=device_op), to_xp_array(a_max, device=device_op)
+    if device_op == "cpu":
         if out is None:
-            y = np.clip(a.data, a_min.data, a_max.data, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+            y = np.clip(arr_a, arr_min, arr_max, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
         else:
-            y = np.clip(a.data, a_min.data, a_max.data, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+            y = np.clip(arr_a, arr_min, arr_max, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.clip(a.data, a_min.data, a_max.data, out=out)
+        y = cp.clip(arr_a, arr_min, arr_max, out=out)
     return Tensor(y)
 
 ###
@@ -251,10 +289,11 @@ def clip(
 ###
 
 def exp(
-    x: TensorLike, 
+    x: OperandLike, 
     /, 
     out: Optional[Union[np.ndarray, Any]] = None,
     *,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     where: Union[bool, ArrayLikeBool] = True, 
     casting: Casting = 'same_kind',
@@ -262,22 +301,14 @@ def exp(
     dtype: Optional[DTypeLike] = None, 
     subok: bool = True
 ) -> TensorLike:
-    from ...tensor import Tensor
-    if x.is_cpu():
-        y = np.exp(x.data, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
-    else:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.exp(x.data, out=out, casting=casting, dtype=dtype)
-    if in_place:
-        x.data = y
-        return x
-    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+    return wrapper_1in_1out(x, out=out, func_name="exp", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def sqrt(
-    x: TensorLike, 
+    x: OperandLike, 
     /, 
     out: Optional[Union[np.ndarray, Any]] = None,
     *,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     where: Union[bool, ArrayLikeBool] = True, 
     casting: Casting = 'same_kind',
@@ -285,22 +316,14 @@ def sqrt(
     dtype: Optional[DTypeLike] = None, 
     subok: bool = True
 ) -> TensorLike:
-    from ...tensor import Tensor
-    if x.is_cpu():
-        y = np.sqrt(x.data, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
-    else:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.sqrt(x.data, out=out, casting=casting, dtype=dtype)
-    if in_place:
-        x.data = y
-        return x
-    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+    return wrapper_1in_1out(x, out=out, func_name="sqrt", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def log(
-    x: TensorLike, 
+    x: OperandLike, 
     /, 
     out: Optional[Union[np.ndarray, Any]] = None,
     *,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     where: Union[bool, ArrayLikeBool] = True, 
     casting: Casting = 'same_kind',
@@ -308,22 +331,14 @@ def log(
     dtype: Optional[DTypeLike] = None, 
     subok: bool = True
 ) -> TensorLike:
-    from ...tensor import Tensor
-    if x.is_cpu():
-        y = np.log(x.data, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
-    else:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.log(x.data, out=out, casting=casting, dtype=dtype)
-    if in_place:
-        x.data = y
-        return x
-    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+    return wrapper_1in_1out(x, out=out, func_name="log", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def square(
-    x: TensorLike, 
+    x: OperandLike, 
     /, 
     out: Optional[Union[np.ndarray, Any]] = None,
     *,
+    device: DeviceLike = "cpu",
     in_place: bool = False,
     where: Union[bool, ArrayLikeBool] = True, 
     casting: Casting = 'same_kind',
@@ -331,16 +346,7 @@ def square(
     dtype: Optional[DTypeLike] = None, 
     subok: bool = True
 ) -> TensorLike:
-    from ...tensor import Tensor
-    if x.is_cpu():
-        y = np.square(x.data, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
-    else:
-        if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.square(x.data, out=out, casting=casting, dtype=dtype)
-    if in_place:
-        x.data = y
-        return x
-    return Tensor(y, device=x.device, prev=(x,), requires_grad=x.requires_grad)
+    return wrapper_1in_1out(x, out=out, func_name="square", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 ###
 ###

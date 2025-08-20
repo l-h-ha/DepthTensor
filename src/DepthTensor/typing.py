@@ -29,6 +29,7 @@ double: TypeAlias = np.double
 
 ArrayLike = npt.ArrayLike
 ArrayLikeBool = npt.NDArray[np.bool_]
+OperandLike: TypeAlias = Union[ArrayLike, TensorLike]
 
 __all__ = [
     'DTypeLike', 
@@ -36,5 +37,5 @@ __all__ = [
     'integer', 'int8', 'int16', 'int16', 'int64',
     'double',
     'DeviceLike', 'AxisShapeLike', 'Order', 'AxisLike', 'ScalarLike', 'ArrayLike', 'ArrayLikeBool', 'ShapeLike',
-    'TensorLike'
+    'TensorLike', 'OperandLike'
     ]

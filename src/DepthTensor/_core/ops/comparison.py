@@ -2,8 +2,7 @@ from typing import (
     Union, 
     Optional, 
     Tuple, 
-    overload,
-    Callable
+    overload
 )
 
 from ...typing import (
@@ -12,13 +11,17 @@ from ...typing import (
     DeviceLike,
     ArrayLikeBool,
     Casting,
-    Order
+    Order,
+    OperandLike
 )
 
 from ..exceptions import (
     CuPyNotFound, CUPY_NOT_FOUND_MSG,
-    DeviceMismatch, DEVICE_MISMATCH_MSG
+    DeviceMismatch, DEVICE_MISMATCH_MSG,
+    OperandMismatch, OPERAND_MISMATCH_MSG
 )
+
+from ..utils import to_xp_array
 
 import numpy as np
 try:
@@ -32,39 +35,34 @@ except (ImportError, ModuleNotFoundError):
 
 @overload
 def where(
-    condition: Union[ArrayLike, TensorLike],
-    /
+    condition: OperandLike,
+    /,
+    *,
+    device: DeviceLike = "cpu"
 ) -> Tuple[TensorLike, ...]: ...
 
 @overload
 def where(
-    condition: Union[ArrayLike, TensorLike],
-    x: Optional[Union[ArrayLike, TensorLike]],
-    y: Optional[Union[ArrayLike, TensorLike]],
+    condition: OperandLike,
+    x: Optional[OperandLike],
+    y: Optional[OperandLike],
     /,
     *,
     device: DeviceLike = "cpu"
 ) -> TensorLike: ...
 
 def where(
-    condition: Union[ArrayLike, TensorLike],
-    x: Optional[Union[ArrayLike, TensorLike]] = None,
-    y: Optional[Union[ArrayLike, TensorLike]] = None,
+    condition: OperandLike,
+    x: Optional[OperandLike] = None,
+    y: Optional[OperandLike] = None,
     /,
     *,
     device: DeviceLike = "cpu"
 ) -> Union[Tuple[TensorLike, ...], TensorLike]:
     from ...tensor import Tensor
     #* One parameter overload
-    if x is None and y is None:
-        if isinstance(condition, TensorLike):
-            data = condition.data
-        else:
-            if device == "cpu":
-                data = np.asarray(condition)
-            else:
-                if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-                data = cp.asarray(condition)
+    if (x is None) and (y is None):
+        data = to_xp_array(condition, device=device)
         if device == "cpu":
             result = np.where(data)
         else:
@@ -72,30 +70,9 @@ def where(
             result = cp.where(data)
         return tuple([Tensor(array, device=device) for array in result])
     elif x is not None and y is not None:
-        if isinstance(condition, TensorLike):
-            data = condition.data
-        else:
-            if device == "cpu":
-                data = np.asarray(condition)
-            else:
-                if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-                data = cp.asarray(condition)
-        if isinstance(x, TensorLike):
-            x_data = x.data
-        else:
-            if device == "cpu":
-                x_data = np.asarray(x)
-            else:
-                if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-                x_data = cp.asarray(x)
-        if isinstance(y, TensorLike):
-            y_data = y.data
-        else:
-            if device == "cpu":
-                y_data = np.asarray(y)
-            else:
-                if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-                y_data = cp.asarray(y)
+        data = to_xp_array(condition, device=device)
+        x_data = to_xp_array(x, device=device)
+        y_data = to_xp_array(y, device=device)
         if device == "cpu":
             result = np.where(data, x_data, y_data)
         else:
@@ -109,13 +86,14 @@ def where(
 ###
 ###
 
-def comparison_ufunc(
-    x1: TensorLike,
-    x2: TensorLike,
+def wrapper_2in_1out(
+    x1: OperandLike,
+    x2: OperandLike,
     /,
     out: Optional[ArrayLikeBool] = None,
     *,
     func_name: str,
+    device: DeviceLike = "cpu",
     where: Union[bool, ArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
@@ -123,97 +101,120 @@ def comparison_ufunc(
     subok: bool = True
 ) -> TensorLike:
     from ...tensor import Tensor
-    if not x1.is_device(x2.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
-    if x1.is_cpu():
-        y = getattr(np, func_name)(x1.data, x2.data, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
+    if isinstance(x1, Tensor) and isinstance(x2, Tensor):
+        if not x1.is_device(x2.device):
+            raise DeviceMismatch(DEVICE_MISMATCH_MSG)
+        else:
+            is_tensor_op = True
+    else:
+        if isinstance(x1, Tensor) or isinstance(x2, Tensor):
+            raise OperandMismatch(OPERAND_MISMATCH_MSG)
+        is_tensor_op = False
+    #* Either tensor-tensor op or array-array op.
+
+    #* If its tensor-tensor op, device is decided by x1.device, else, its by the device argument.
+    if is_tensor_op and isinstance(x1, Tensor):
+        device_op = x1.device
+    else:
+        device_op = device
+
+    x1, x2 = to_xp_array(x1, device=device_op), to_xp_array(x2, device=device_op)
+    if device_op == "cpu":
+        y = getattr(np, func_name)(x1, x2, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = getattr(cp, func_name)(x1.data, x2.data, out=out, dtype=dtype, casting=casting)
-    return Tensor(y, device=x1.device)
+        y = getattr(cp, func_name)(x1, x2, out=out, dtype=dtype, casting=casting)
+    return Tensor(y, device=device_op)
 
 def equal(
-    x1: TensorLike,
-    x2: TensorLike,
+    x1: OperandLike,
+    x2: OperandLike,
     /,
     out: Optional[ArrayLikeBool] = None,
     *,
+    device: DeviceLike = "cpu",
     where: Union[bool, ArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: None = None,
     subok: bool = True
 ) -> TensorLike:
-    return comparison_ufunc(x1, x2, out=out, func_name="equal", where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    return wrapper_2in_1out(x1, x2, out=out, func_name="equal", device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def not_equal(
-    x1: TensorLike,
-    x2: TensorLike,
+    x1: OperandLike,
+    x2: OperandLike,
     /,
     out: Optional[ArrayLikeBool] = None,
     *,
+    device: DeviceLike = "cpu",
     where: Union[bool, ArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: None = None,
     subok: bool = True
 ) -> TensorLike:
-    return comparison_ufunc(x1, x2, out=out, func_name="not_equal", where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    return wrapper_2in_1out(x1, x2, out=out, func_name="not_equal", device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def greater(
-    x1: TensorLike,
-    x2: TensorLike,
+    x1: OperandLike,
+    x2: OperandLike,
     /,
     out: Optional[ArrayLikeBool] = None,
     *,
+    device: DeviceLike = "cpu",
     where: Union[bool, ArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: None = None,
     subok: bool = True
 ) -> TensorLike:
-    return comparison_ufunc(x1, x2, out=out, func_name="greater", where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    return wrapper_2in_1out(x1, x2, out=out, func_name="greater", device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def greater_equal(
-    x1: TensorLike,
-    x2: TensorLike,
+    x1: OperandLike,
+    x2: OperandLike,
     /,
     out: Optional[ArrayLikeBool] = None,
     *,
+    device: DeviceLike = "cpu",
     where: Union[bool, ArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: None = None,
     subok: bool = True
 ) -> TensorLike:
-    return comparison_ufunc(x1, x2, out=out, func_name="greater_equal", where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    return wrapper_2in_1out(x1, x2, out=out, func_name="greater_equal", device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def less(
-    x1: TensorLike,
-    x2: TensorLike,
+    x1: OperandLike,
+    x2: OperandLike,
     /,
     out: Optional[ArrayLikeBool] = None,
     *,
+    device: DeviceLike = "cpu",
     where: Union[bool, ArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: None = None,
     subok: bool = True
 ) -> TensorLike:
-    return comparison_ufunc(x1, x2, out=out, func_name="less", where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    return wrapper_2in_1out(x1, x2, out=out, func_name="less", device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 def less_equal(
-    x1: TensorLike,
-    x2: TensorLike,
+    x1: OperandLike,
+    x2: OperandLike,
     /,
     out: Optional[ArrayLikeBool] = None,
     *,
+    device: DeviceLike = "cpu",
     where: Union[bool, ArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: None = None,
     subok: bool = True
 ) -> TensorLike:
-    return comparison_ufunc(x1, x2, out=out, func_name="less_equal", where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+    return wrapper_2in_1out(x1, x2, out=out, func_name="less_equal", device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
 ###
 ###

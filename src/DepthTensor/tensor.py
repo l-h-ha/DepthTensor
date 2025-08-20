@@ -16,7 +16,8 @@ from .typing import (
     ShapeLike, 
     ArrayLikeBool,
     Casting, 
-    AxisShapeLike
+    AxisShapeLike,
+    OperandLike
 )
 
 from ._core import (
@@ -164,27 +165,29 @@ class Tensor():
 
     @staticmethod
     def zeros_like(
-        a: Tensor,
+        a: OperandLike,
         /,
-        *, 
+        *,
+        device: DeviceLike = "cpu",
         dtype: Optional[DTypeLike] = None, 
         order: Order = 'K', 
         subok: bool = True,
         shape: Optional[AxisShapeLike] = None
     ) -> Tensor:
-        return zeros_like(a, dtype=dtype, order=order, subok=subok, shape=shape)
+        return zeros_like(a, device=device, dtype=dtype, order=order, subok=subok, shape=shape)
     
     @staticmethod
     def ones_like(
-        a: Tensor,
+        a: OperandLike,
         /,
         *, 
+        device: DeviceLike = "cpu",
         dtype: Optional[DTypeLike] = None, 
         order: Order = 'K', 
         subok: bool = True,
         shape: Optional[AxisShapeLike] = None
     ) -> Tensor:
-        return ones_like(a, dtype=dtype, order=order, subok=subok, shape=shape)
+        return ones_like(a, device=device, dtype=dtype, order=order, subok=subok, shape=shape)
     
     ###
     ### Element-wise
@@ -192,11 +195,12 @@ class Tensor():
 
     @staticmethod
     def add(
-        x1: Tensor, 
-        x2: Tensor, 
+        x1: OperandLike, 
+        x2: OperandLike, 
         /,
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
+        device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
@@ -207,7 +211,7 @@ class Tensor():
         subok: bool = True
     ) -> Tensor:
         return _wrapper_2in_1out(
-            add(x1, x2, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            add(x1, x2, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
             add_diff, x1, x2, record_op
         )
     
@@ -218,6 +222,7 @@ class Tensor():
         /,
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
+        device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
@@ -228,7 +233,7 @@ class Tensor():
         subok: bool = True
     ) -> Tensor:
         return _wrapper_2in_1out(
-            subtract(x1, x2, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            subtract(x1, x2, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
             subtract_diff, x1, x2, record_op
         )
 
@@ -239,6 +244,7 @@ class Tensor():
         /,
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
+        device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
@@ -249,7 +255,7 @@ class Tensor():
         subok: bool = True
     ) -> Tensor:
         return _wrapper_2in_1out(
-            multiply(x1, x2, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            multiply(x1, x2, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
             multiply_diff, x1, x2, record_op
         )
     
@@ -260,6 +266,7 @@ class Tensor():
         /,
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
+        device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
@@ -269,7 +276,7 @@ class Tensor():
         subok: bool = True
     ) -> Tensor:
         return _wrapper_2in_1out(
-            matmul(x1, x2, out=out, in_place=in_place, casting=casting, order=order, dtype=dtype, subok=subok),
+            matmul(x1, x2, out=out, device=device, in_place=in_place, casting=casting, order=order, dtype=dtype, subok=subok),
             matmul_diff, x1, x2, record_op
         )
     
@@ -280,6 +287,7 @@ class Tensor():
         /,
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
+        device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
@@ -290,7 +298,7 @@ class Tensor():
         subok: bool = True
     ) -> Tensor:
         return _wrapper_2in_1out(
-            divide(x1, x2, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            divide(x1, x2, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
             divide_diff, x1, x2, record_op
         )
     
@@ -300,6 +308,7 @@ class Tensor():
         /,
         out: Optional[Union[np.ndarray, Any]] = None, 
         *,
+        device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
@@ -310,7 +319,7 @@ class Tensor():
         subok: bool = True
     ) -> Tensor:
         return _wrapper_1in_1out(
-            negative(x, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            negative(x, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
             negative_diff, x, record_op
         )
     
@@ -322,13 +331,14 @@ class Tensor():
         /,
         out: Optional[ArrayLike] = None,
         *,
+        device: DeviceLike = "cpu",
         where: Union[bool, ArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
         subok: bool = True
     ) -> Tensor:
-        return clip(a, a_min, a_max, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+        return clip(a, a_min, a_max, out=out, device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
     
     @staticmethod
     def sign(
@@ -336,6 +346,7 @@ class Tensor():
         /,
         out: Optional[Union[np.ndarray, Any]] = None, 
         *,
+        device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
@@ -346,7 +357,7 @@ class Tensor():
         subok: bool = True
     ) -> Tensor:
         return _wrapper_1in_1out(
-            sign(x, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            sign(x, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
             sign_diff, x, record_op
         )
     
@@ -356,6 +367,7 @@ class Tensor():
         /,
         out: Optional[Union[np.ndarray, Any]] = None, 
         *,
+        device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
@@ -366,7 +378,7 @@ class Tensor():
         subok: bool = True
     ) -> Tensor:
         return _wrapper_1in_1out(
-            abs(x, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            abs(x, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
             abs_diff, x, record_op
         )
 
@@ -380,6 +392,7 @@ class Tensor():
         /, 
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
+        device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
@@ -390,7 +403,7 @@ class Tensor():
         subok: bool = True
     ) -> Tensor:
         return _wrapper_1in_1out(
-            exp(x, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            exp(x, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
             exp_diff, x, record_op
         )
     
@@ -400,6 +413,7 @@ class Tensor():
         /, 
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
+        device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
@@ -410,7 +424,7 @@ class Tensor():
         subok: bool = True
     ) -> Tensor:
         return _wrapper_1in_1out(
-            sqrt(x, out=out, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            sqrt(x, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
             sqrt_diff, x, record_op
         )
     
@@ -422,7 +436,9 @@ class Tensor():
     @overload
     def where(
         condition: Union[ArrayLike, Tensor],
-        /
+        /,
+        *,
+        device: DeviceLike = "cpu",
     ) -> Tuple[Tensor, ...]: ...
 
     @staticmethod
@@ -432,6 +448,8 @@ class Tensor():
         x: Optional[Union[ArrayLike, Tensor]],
         y: Optional[Union[ArrayLike, Tensor]],
         /,
+        *,
+        device: DeviceLike = "cpu",
     ) -> Tensor: ...
 
     @staticmethod
@@ -439,7 +457,9 @@ class Tensor():
         condition: Union[ArrayLike, Tensor],
         x: Optional[Union[ArrayLike, Tensor]] = None,
         y: Optional[Union[ArrayLike, Tensor]] = None,
-        /
+        /,
+        *,
+        device: DeviceLike = "cpu",
     ) -> Union[Tuple[Tensor, ...], Tensor]:
         device = "cpu"
         if isinstance(condition, Tensor):
@@ -459,13 +479,14 @@ class Tensor():
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
+        device: DeviceLike = "cpu",
         where: Union[bool, ArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
         subok: bool = True
     ) -> Tensor:
-        return equal(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+        return equal(x1, x2, out=out, device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
     
     @staticmethod
     def not_equal(
@@ -474,13 +495,14 @@ class Tensor():
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
+        device: DeviceLike = "cpu",
         where: Union[bool, ArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
         subok: bool = True
     ) -> Tensor:
-        return not_equal(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+        return not_equal(x1, x2, out=out, device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
     
     @staticmethod
     def greater(
@@ -489,13 +511,14 @@ class Tensor():
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
+        device: DeviceLike = "cpu",
         where: Union[bool, ArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
         subok: bool = True
     ) -> Tensor:
-        return greater(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+        return greater(x1, x2, out=out, device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
     @staticmethod
     def greater_equal(
@@ -504,13 +527,14 @@ class Tensor():
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
+        device: DeviceLike = "cpu",
         where: Union[bool, ArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
         subok: bool = True
     ) -> Tensor:
-        return greater_equal(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+        return greater_equal(x1, x2, out=out, device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
     @staticmethod
     def less(
@@ -519,13 +543,14 @@ class Tensor():
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
+        device: DeviceLike = "cpu",
         where: Union[bool, ArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
         subok: bool = True
     ) -> Tensor:
-        return less(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+        return less(x1, x2, out=out, device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
     @staticmethod
     def less_equal(
@@ -534,13 +559,14 @@ class Tensor():
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
+        device: DeviceLike = "cpu",
         where: Union[bool, ArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
         subok: bool = True
     ) -> Tensor:
-        return less_equal(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+        return less_equal(x1, x2, out=out, device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
     ###
     ### Reduction
@@ -551,6 +577,7 @@ class Tensor():
         a: Tensor,
         /,
         *,
+        device: DeviceLike = "cpu",
         axis: Optional[AxisShapeLike] = None,
         dtype: Optional[DTypeLike] = None,
         out: Optional[Union[np.ndarray, Any]] = None,
@@ -558,20 +585,21 @@ class Tensor():
         initial: Any = _NoValue,
         where: Union[bool, ArrayLikeBool] = True
     ) -> Tensor:
-        return sum(a, axis=axis, dtype=dtype, out=out, keepdims=keepdims, initial=initial, where=where)
+        return sum(a, axis=axis, device=device, dtype=dtype, out=out, keepdims=keepdims, initial=initial, where=where)
 
     @staticmethod
     def max(
         a: Tensor,
         /,
         *,
+        device: DeviceLike = "cpu",
         axis: Optional[ShapeLike] = None, 
         out: Optional[Union[np.ndarray, Any]] = None, 
         keepdims: bool = False, 
         initial: Any = _NoValue, 
         where: Union[bool, ArrayLikeBool] = True
     ) -> Tensor:
-        return max(a, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where)
+        return max(a, axis=axis, device=device, out=out, keepdims=keepdims, initial=initial, where=where)
     
     @staticmethod
     def maximum(
@@ -580,13 +608,14 @@ class Tensor():
         /,
         out: Optional[np.ndarray] = None,
         *,
+        device: DeviceLike = "cpu",
         where: Union[bool, ArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
         subok: bool = True
     ) -> Tensor:
-        return maximum(x1, x2, out=out, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+        return maximum(x1, x2, out=out, device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
     ###
     ### Dunder Operations

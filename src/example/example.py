@@ -1,7 +1,4 @@
-from ..DepthTensor import Tensor, differentiate
+from ..DepthTensor import Tensor, differentiate, random
 
-a = Tensor(2., requires_grad=True)
-b = Tensor(3., requires_grad=True)
-c = Tensor.add(a, b)
-differentiate(c)
-print(a.grad)
+a = random.uniform(0, 1, (3,))
+print(a)
