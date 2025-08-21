@@ -70,7 +70,10 @@ def wrapper_2in_1out(
 
     a1, a2 = to_xp_array(x1, device=device_op), to_xp_array(x2, device=device_op)
     if device_op == "cpu":
-        y = getattr(np, func_name)(a1, a2, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
+        if func_name == "matmul":
+            y = getattr(np, func_name)(a1, a2, out=out, dtype=dtype, casting=casting, order=order, subok=subok)
+        else:
+            y = getattr(np, func_name)(a1, a2, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = getattr(cp, func_name)(a1, a2, out=out, dtype=dtype, casting=casting)
