@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2025-08-22
+
+### Changed
+
+- Comparison dunder methods now accept regular datatypes as opposed to primarily tensors.
+
+### Fixed
+
+- Initial argument values handled correctly for some functions.
+
 ## [1.2.1] - 2025-08-21
 
 ### Fixed
