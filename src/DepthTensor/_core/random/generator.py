@@ -1,8 +1,7 @@
 from typing import (
     Optional,
     overload,
-    Any,
-    Type
+    Any
 )
 
 from numpy import random
@@ -19,7 +18,6 @@ from ..exceptions import (
     CuPyNotFound, CUPY_NOT_FOUND_MSG
 )
 
-import numpy as np
 try:
     import cupy as cp
 except (ImportError, ModuleNotFoundError):
@@ -106,5 +104,8 @@ def uniform(
 ###
 
 __all__ = [
-    'rand', 'randn', 'randint', 'uniform'
+    'rand', 
+    'randn', 
+    'randint', 
+    'uniform'
 ]

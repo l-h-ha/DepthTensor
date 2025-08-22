@@ -6,7 +6,6 @@ from typing import (
 )
 
 from ...typing import (
-    ArrayLike,
     TensorLike,
     DeviceLike,
     ArrayLikeBool,
@@ -18,7 +17,6 @@ from ...typing import (
 from ..exceptions import (
     CuPyNotFound, CUPY_NOT_FOUND_MSG,
     DeviceMismatch, DEVICE_MISMATCH_MSG,
-    OperandMismatch, OPERAND_MISMATCH_MSG
 )
 
 from ..utils import to_xp_array
@@ -101,15 +99,12 @@ def wrapper_2in_1out(
     subok: bool = True
 ) -> TensorLike:
     from ...tensor import Tensor
+    is_tensor_op = False
     if isinstance(x1, Tensor) and isinstance(x2, Tensor):
         if not x1.is_device(x2.device):
             raise DeviceMismatch(DEVICE_MISMATCH_MSG)
         else:
             is_tensor_op = True
-    else:
-        if isinstance(x1, Tensor) or isinstance(x2, Tensor):
-            raise OperandMismatch(OPERAND_MISMATCH_MSG)
-        is_tensor_op = False
     #* Either tensor-tensor op or array-array op.
 
     #* If its tensor-tensor op, device is decided by x1.device, else, its by the device argument.
@@ -222,5 +217,10 @@ def less_equal(
 
 __all__ = [
     'where',
-    'equal', 'not_equal', 'greater', 'greater_equal', 'less', 'less_equal'
+    'equal', 
+    'not_equal', 
+    'greater', 
+    'greater_equal', 
+    'less', 
+    'less_equal'
 ]

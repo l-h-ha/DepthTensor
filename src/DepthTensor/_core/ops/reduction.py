@@ -1,8 +1,7 @@
 from typing import (
     Optional, 
     Union, 
-    Any,
-    TypeVar
+    Any
 )
 
 from ...typing import (
@@ -14,14 +13,12 @@ from ...typing import (
     DTypeLike,
     AxisShapeLike,
     OperandLike,
-    DeviceLike,
-    ArrayLike
+    DeviceLike
 )
 
 from ..exceptions import (
     CuPyNotFound, CUPY_NOT_FOUND_MSG,
-    DeviceMismatch, DEVICE_MISMATCH_MSG,
-    OperandMismatch, OPERAND_MISMATCH_MSG
+    DeviceMismatch, DEVICE_MISMATCH_MSG
 )
 
 from ..utils import (
@@ -59,10 +56,17 @@ def sum(
 
     arr = to_xp_array(a, device=device_op)
     if device_op == "cpu":
-        if out is None:
-            y = np.sum(arr, axis=axis, dtype=dtype, keepdims=keepdims, initial=initial, where=where)
-        else:
-            y = np.sum(arr, axis=axis, dtype=dtype, out=out, keepdims=keepdims, initial=initial, where=where)
+        kwds = {
+            'axis': axis,
+            'dtype': dtype,
+            'keepdims': keepdims,
+            'where': where
+        }
+        if not isinstance(initial, type(_NoValue)):
+            kwds['initial'] = initial        
+        if out is not None:
+            kwds['out'] = out
+        y = np.sum(arr, **kwds)
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.sum(arr, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
@@ -107,14 +111,11 @@ def maximum(
     subok: bool = True
 ) -> TensorLike:
     from ...tensor import Tensor
+    is_tensor_op = False
     if isinstance(x1, Tensor) and isinstance(x2, Tensor):
         if not x1.is_device(x2.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
         is_tensor_op = True
-    else:
-        if isinstance(x1, Tensor) or isinstance(x2, Tensor):
-            raise OperandMismatch(OPERAND_MISMATCH_MSG)
-        is_tensor_op = False
-    
+
     if is_tensor_op and isinstance(x1, Tensor):
         device_op = x1.device
     else:
@@ -132,5 +133,7 @@ def maximum(
 ###
 
 __all__ = [
-    'max', 'maximum', 'sum'
+    'max', 
+    'maximum', 
+    'sum'
 ]

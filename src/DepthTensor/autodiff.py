@@ -7,7 +7,6 @@ from ._core.exceptions import (
 )
 
 import numpy as np
-
 try:
     import cupy as cp
 except (ModuleNotFoundError, ImportError):

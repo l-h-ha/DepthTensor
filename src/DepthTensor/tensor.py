@@ -217,8 +217,8 @@ class Tensor():
     
     @staticmethod
     def subtract(
-        x1: Tensor, 
-        x2: Tensor, 
+        x1: OperandLike, 
+        x2: OperandLike, 
         /,
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
@@ -239,8 +239,8 @@ class Tensor():
 
     @staticmethod
     def multiply(
-        x1: Tensor, 
-        x2: Tensor, 
+        x1: OperandLike, 
+        x2: OperandLike, 
         /,
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
@@ -261,8 +261,8 @@ class Tensor():
     
     @staticmethod
     def matmul(
-        x1: Tensor, 
-        x2: Tensor, 
+        x1: OperandLike, 
+        x2: OperandLike, 
         /,
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
@@ -282,8 +282,8 @@ class Tensor():
     
     @staticmethod
     def divide(
-        x1: Tensor, 
-        x2: Tensor, 
+        x1: OperandLike, 
+        x2: OperandLike, 
         /,
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
@@ -304,7 +304,7 @@ class Tensor():
     
     @staticmethod
     def negative(
-        x: Tensor,
+        x: OperandLike,
         /,
         out: Optional[Union[np.ndarray, Any]] = None, 
         *,
@@ -325,9 +325,9 @@ class Tensor():
     
     @staticmethod
     def clip(
-        a: Tensor,
-        a_min: Tensor,
-        a_max: Tensor,
+        a: OperandLike,
+        a_min: OperandLike,
+        a_max: OperandLike,
         /,
         out: Optional[ArrayLike] = None,
         *,
@@ -342,7 +342,7 @@ class Tensor():
     
     @staticmethod
     def sign(
-        x: Tensor,
+        x: OperandLike,
         /,
         out: Optional[Union[np.ndarray, Any]] = None, 
         *,
@@ -363,7 +363,7 @@ class Tensor():
     
     @staticmethod
     def abs(
-        x: Tensor,
+        x: OperandLike,
         /,
         out: Optional[Union[np.ndarray, Any]] = None, 
         *,
@@ -388,7 +388,7 @@ class Tensor():
 
     @staticmethod
     def exp(
-        x: Tensor, 
+        x: OperandLike, 
         /, 
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
@@ -409,7 +409,7 @@ class Tensor():
     
     @staticmethod
     def sqrt(
-        x: Tensor, 
+        x: OperandLike, 
         /, 
         out: Optional[Union[np.ndarray, Any]] = None,
         *,
@@ -435,7 +435,7 @@ class Tensor():
     @staticmethod
     @overload
     def where(
-        condition: Union[ArrayLike, Tensor],
+        condition: OperandLike,
         /,
         *,
         device: DeviceLike = "cpu",
@@ -444,9 +444,9 @@ class Tensor():
     @staticmethod
     @overload
     def where(
-        condition: Union[ArrayLike, Tensor],
-        x: Optional[Union[ArrayLike, Tensor]],
-        y: Optional[Union[ArrayLike, Tensor]],
+        condition: OperandLike,
+        x: Optional[OperandLike],
+        y: Optional[OperandLike],
         /,
         *,
         device: DeviceLike = "cpu",
@@ -454,9 +454,9 @@ class Tensor():
 
     @staticmethod
     def where(
-        condition: Union[ArrayLike, Tensor],
-        x: Optional[Union[ArrayLike, Tensor]] = None,
-        y: Optional[Union[ArrayLike, Tensor]] = None,
+        condition: OperandLike,
+        x: Optional[OperandLike] = None,
+        y: Optional[OperandLike] = None,
         /,
         *,
         device: DeviceLike = "cpu",
@@ -474,8 +474,8 @@ class Tensor():
     
     @staticmethod
     def equal(
-        x1: Tensor,
-        x2: Tensor,
+        x1: OperandLike,
+        x2: OperandLike,
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
@@ -490,8 +490,8 @@ class Tensor():
     
     @staticmethod
     def not_equal(
-        x1: Tensor,
-        x2: Tensor,
+        x1: OperandLike,
+        x2: OperandLike,
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
@@ -506,8 +506,8 @@ class Tensor():
     
     @staticmethod
     def greater(
-        x1: Tensor,
-        x2: Tensor,
+        x1: OperandLike,
+        x2: OperandLike,
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
@@ -522,8 +522,8 @@ class Tensor():
 
     @staticmethod
     def greater_equal(
-        x1: Tensor,
-        x2: Tensor,
+        x1: OperandLike,
+        x2: OperandLike,
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
@@ -538,8 +538,8 @@ class Tensor():
 
     @staticmethod
     def less(
-        x1: Tensor,
-        x2: Tensor,
+        x1: OperandLike,
+        x2: OperandLike,
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
@@ -554,8 +554,8 @@ class Tensor():
 
     @staticmethod
     def less_equal(
-        x1: Tensor,
-        x2: Tensor,
+        x1: OperandLike,
+        x2: OperandLike,
         /,
         out: Optional[ArrayLikeBool] = None,
         *,
@@ -574,7 +574,7 @@ class Tensor():
 
     @staticmethod
     def sum(
-        a: Tensor,
+        a: OperandLike,
         /,
         *,
         device: DeviceLike = "cpu",
@@ -589,7 +589,7 @@ class Tensor():
 
     @staticmethod
     def max(
-        a: Tensor,
+        a: OperandLike,
         /,
         *,
         device: DeviceLike = "cpu",
@@ -603,8 +603,8 @@ class Tensor():
     
     @staticmethod
     def maximum(
-        x1: Tensor,
-        x2: Tensor,
+        x1: OperandLike,
+        x2: OperandLike,
         /,
         out: Optional[np.ndarray] = None,
         *,
@@ -621,73 +621,61 @@ class Tensor():
     ### Dunder Operations
     ###
 
-    def __add__(self, t: Tensor) -> Tensor:
+    def __add__(self, t: OperandLike) -> Tensor:
         return Tensor.add(self, t)
-    def __radd__(self, t: Tensor) -> Tensor:
+    def __radd__(self, t: OperandLike) -> Tensor:
         return Tensor.add(t, self)
-    def __iadd__(self, t: Tensor) -> Tensor:
+    def __iadd__(self, t: OperandLike) -> Tensor:
         return Tensor.add(self, t, in_place=True)
     
-    def __sub__(self, t: Tensor) -> Tensor:
+    def __sub__(self, t: OperandLike) -> Tensor:
         return Tensor.subtract(self, t)
-    def __rsub__(self, t: Tensor) -> Tensor:
+    def __rsub__(self, t: OperandLike) -> Tensor:
         return Tensor.subtract(t, self)
-    def __isub__(self, t: Tensor) -> Tensor:
+    def __isub__(self, t: OperandLike) -> Tensor:
         return Tensor.subtract(self, t, in_place=True)
     
-    def __mul__(self, t: Tensor) -> Tensor:
+    def __mul__(self, t: OperandLike) -> Tensor:
         return Tensor.multiply(self, t)
-    def __rmul__(self, t: Tensor) -> Tensor:
+    def __rmul__(self, t: OperandLike) -> Tensor:
         return Tensor.multiply(t, self)
-    def __imul__(self, t: Tensor) -> Tensor:
+    def __imul__(self, t: OperandLike) -> Tensor:
         return Tensor.multiply(self, t, in_place=True)
     
-    def __matmul__(self, t: Tensor) -> Tensor:
+    def __matmul__(self, t: OperandLike) -> Tensor:
         return Tensor.matmul(self, t)
-    def __rmatmul__(self, t: Tensor) -> Tensor:
+    def __rmatmul__(self, t: OperandLike) -> Tensor:
         return Tensor.matmul(t, self)
-    def __imatmul__(self, t: Tensor) -> Tensor:
+    def __imatmul__(self, t: OperandLike) -> Tensor:
         return Tensor.matmul(self, t, in_place=True)
     
-    def __truediv__(self, t: Tensor) -> Tensor:
+    def __truediv__(self, t: OperandLike) -> Tensor:
         return Tensor.divide(self, t)
-    def __rtruediv__(self, t: Tensor) -> Tensor:
+    def __rtruediv__(self, t: OperandLike) -> Tensor:
         return Tensor.divide(t, self)
-    def __itruediv__(self, t: Tensor) -> Tensor:
+    def __itruediv__(self, t: OperandLike) -> Tensor:
         return Tensor.divide(self, t, in_place=True)
 
     ###
     ### Unary
     ###
 
-    def __eq__(self, value: Any) -> "Tensor": # type: ignore[override]
-        if not isinstance(value, Tensor):
-            return NotImplemented
+    def __eq__(self, value: Any) -> Tensor: # type: ignore[override]
         return equal(self, value)
     
-    def __ne__(self, value: Any) -> "Tensor": # type: ignore[override]
-        if not isinstance(value, Tensor):
-            return NotImplemented
+    def __ne__(self, value: Any) -> Tensor: # type: ignore[override]
         return not_equal(self, value)
     
-    def __gt__(self, value: Any) -> "Tensor": # type: ignore[override]
-        if not isinstance(value, Tensor):
-            return NotImplemented
+    def __gt__(self, value: Any) -> Tensor: # type: ignore[override]
         return greater(self, value)
 
-    def __ge__(self, value: Any) -> "Tensor": # type: ignore[override]
-        if not isinstance(value, Tensor):
-            return NotImplemented
+    def __ge__(self, value: Any) -> Tensor: # type: ignore[override]
         return greater_equal(self, value)
 
-    def __lt__(self, value: Any) -> "Tensor": # type: ignore[override]
-        if not isinstance(value, Tensor):
-            return NotImplemented
+    def __lt__(self, value: Any) -> Tensor: # type: ignore[override]
         return less(self, value)
 
-    def __le__(self, value: Any) -> "Tensor": # type: ignore[override]
-        if not isinstance(value, Tensor):
-            return NotImplemented
+    def __le__(self, value: Any) -> Tensor: # type: ignore[override]
         return less_equal(self, value)
 
     def __neg__(self) -> Tensor:

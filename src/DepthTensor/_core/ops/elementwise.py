@@ -17,8 +17,7 @@ from ...typing import (
 
 from ..exceptions import (
     DeviceMismatch, DEVICE_MISMATCH_MSG,
-    CuPyNotFound, CUPY_NOT_FOUND_MSG,
-    OperandMismatch, OPERAND_MISMATCH_MSG
+    CuPyNotFound, CUPY_NOT_FOUND_MSG
 )
 
 from ..utils import (
@@ -51,15 +50,12 @@ def wrapper_2in_1out(
     subok: bool = True
 ) -> TensorLike:
     from ...tensor import Tensor
+    is_tensor_op = False
     if isinstance(x1, Tensor) and isinstance(x2, Tensor):
         if not x1.is_device(x2.device):
             raise DeviceMismatch(DEVICE_MISMATCH_MSG)
         else:
-            is_tensor_op = True
-    else:
-        if isinstance(x1, Tensor) or isinstance(x2, Tensor):
-            raise OperandMismatch(OPERAND_MISMATCH_MSG)
-        is_tensor_op = False    
+            is_tensor_op = True 
     #* Either tensor-tensor op or array-array op.
 
     #* If its tensor-tensor op, device is decided by x1.device, else, its by the device argument.
@@ -263,14 +259,11 @@ def clip(
     subok: bool = True
 ) -> TensorLike:
     from ...tensor import Tensor
+    is_tensor_op = False
     if isinstance(a, Tensor) and isinstance(a_min, Tensor) and isinstance(a_max, Tensor):
         if not (a.device == a_min.device == a_max.device): raise DeviceMismatch(DEVICE_MISMATCH_MSG)
         is_tensor_op = True
-    else:
-        if isinstance(a, Tensor) or isinstance(a_min, Tensor) or isinstance(a_max, Tensor): 
-            raise OperandMismatch(OPERAND_MISMATCH_MSG)
-        is_tensor_op = False
-    
+
     if is_tensor_op and isinstance(a, Tensor):
         device_op = a.device
     else:
@@ -356,10 +349,17 @@ def square(
 ###
 
 __all__ = [
-    'add', 'subtract', 'multiply', 'matmul', 'divide',
-    'negative', 'sign', 'abs',
-
-    'exp', 'sqrt', 'log', 'square',
-
+    'add', 
+    'subtract', 
+    'multiply', 
+    'matmul', 
+    'divide',
+    'negative', 
+    'sign', 
+    'abs',
+    'exp', 
+    'sqrt', 
+    'log', 
+    'square',
     'clip'
 ]
