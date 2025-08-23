@@ -22,27 +22,60 @@ from .typing import (
 
 from ._core import (
     xp_array_to_device,
-    CuPyNotFound, CUPY_NOT_FOUND_MSG,
+    CuPyNotFound, 
+    CUPY_NOT_FOUND_MSG,
 
     #* creation
-    zeros_like, ones_like,
+    zeros_like, 
+    ones_like,
 
     #* elementwise
-    add, subtract, multiply, matmul, divide,
-    negative, clip, sign, abs,
+    add, 
+    subtract, 
+    multiply, 
+    matmul, 
+    divide,
+    negative, 
+    power,
+    clip, 
+    sign, 
+    abs,
+    #* elementwise (exponents/logarithm)
+    exp, 
+    sqrt, 
+    log, 
+    square,
 
-    #* exponents/logarithm
-    exp, sqrt,
-
-    #* diff
-    add_diff, subtract_diff, multiply_diff, matmul_diff, divide_diff,
-    negative_diff, exp_diff, sqrt_diff, sign_diff, abs_diff,
+    #* diff (elementwise)
+    add_diff, 
+    subtract_diff, 
+    multiply_diff, 
+    matmul_diff, 
+    divide_diff,
+    power_diff,
+    negative_diff, 
+    sign_diff, 
+    abs_diff,
+    #* diff (exponents/logarithm)
+    exp_diff, 
+    sqrt_diff,
+    log_diff,
+    square_diff,
+    
 
     #* comparison
-    where, equal, not_equal, greater, greater_equal, less, less_equal,
+    where, 
+    equal, 
+    not_equal, 
+    greater, 
+    greater_equal, 
+    less, 
+    less_equal,
 
     #* reduction
-    max, maximum, sum
+    max, 
+    maximum, 
+    sum
 )
 
 import numpy as np
@@ -303,6 +336,28 @@ class Tensor():
         )
     
     @staticmethod
+    def power(
+        x1: OperandLike, 
+        x2: OperandLike, 
+        /,
+        out: Optional[Union[np.ndarray, Any]] = None,
+        *,
+        device: DeviceLike = "cpu",
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[ArrayLikeBool, bool] = True,
+        casting: Casting = 'same_kind',
+        order: Order = 'K',
+        dtype: Optional[DTypeLike] = None,
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_2in_1out(
+            power(x1, x2, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            power_diff, x1, x2, record_op
+        )
+    
+    @staticmethod
     def negative(
         x: OperandLike,
         /,
@@ -426,6 +481,48 @@ class Tensor():
         return _wrapper_1in_1out(
             sqrt(x, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
             sqrt_diff, x, record_op
+        )
+    
+    @staticmethod
+    def log(
+        x: OperandLike, 
+        /, 
+        out: Optional[Union[np.ndarray, Any]] = None,
+        *,
+        device: DeviceLike = "cpu",
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[bool, ArrayLikeBool] = True, 
+        casting: Casting = 'same_kind',
+        order: Order = 'K', 
+        dtype: Optional[DTypeLike] = None, 
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_1in_1out(
+            log(x, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            log_diff, x, record_op
+        )
+    
+    @staticmethod
+    def square(
+        x: OperandLike, 
+        /, 
+        out: Optional[Union[np.ndarray, Any]] = None,
+        *,
+        device: DeviceLike = "cpu",
+        in_place: bool = False,
+        record_op: bool = True,
+
+        where: Union[bool, ArrayLikeBool] = True, 
+        casting: Casting = 'same_kind',
+        order: Order = 'K', 
+        dtype: Optional[DTypeLike] = None, 
+        subok: bool = True
+    ) -> Tensor:
+        return _wrapper_1in_1out(
+            square(x, out=out, device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok),
+            square_diff, x, record_op
         )
     
     ###
@@ -655,6 +752,11 @@ class Tensor():
         return Tensor.divide(t, self)
     def __itruediv__(self, t: OperandLike) -> Tensor:
         return Tensor.divide(self, t, in_place=True)
+    
+    def __pow__(self, t: OperandLike) -> Tensor:
+        return Tensor.power(self, t)
+    def __ipow__(self, t: OperandLike) -> Tensor:
+        return Tensor.power(self, t, in_place=True)
 
     ###
     ### Unary

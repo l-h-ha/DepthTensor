@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2025-08-23
+
+### Added
+
+- Dunder method ```Tensor.__pow__()```, along with static method ```Tensor.power()```, with differentiation functionalities.
+
+- Static methods ```Tensor.log()``` and ```Tensor.square()``` with differentiation functionalities.
+
 ## [1.3.1] - 2025-08-22
 
 ### Changed

@@ -199,6 +199,23 @@ def divide(
 ) -> TensorLike:
     return wrapper_2in_1out(x1, x2, out=out, func_name="divide", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
+def power(
+    x1: OperandLike, 
+    x2: OperandLike, 
+    /,
+    out: Optional[Union[np.ndarray, Any]] = None,
+    *,
+    device: DeviceLike = "cpu",
+    in_place: bool = False,
+    where: Union[ArrayLikeBool, bool] = True,
+    casting: Casting = 'same_kind',
+    order: Order = 'K',
+    dtype: Optional[DTypeLike] = None,
+    subok: bool = True
+) -> TensorLike:
+    return wrapper_2in_1out(x1, x2, out=out, func_name="power", device=device, in_place=in_place, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+
+
 def negative(
     x: OperandLike,
     /,
@@ -354,6 +371,7 @@ __all__ = [
     'multiply', 
     'matmul', 
     'divide',
+    'power',
     'negative', 
     'sign', 
     'abs',
