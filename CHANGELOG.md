@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2025-08-24
+
+### Added
+
+- Dunder method ```Tensor.__getitem__()```, enabling entry access without directing to ```data``` attribute.
+
+- Dunder method ```Tensor.__setitem__()```, enabling entry overwriting without directing to ```data``` attribute.
+
+- Dunder method ```Tensor.__iter__()```, enabling iteratable tensor objects.
+
+
 ## [1.4.0] - 2025-08-23
 
 ### Added

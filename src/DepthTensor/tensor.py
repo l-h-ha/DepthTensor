@@ -5,7 +5,8 @@ from typing import (
     Any,
     Tuple, 
     Callable, 
-    overload
+    overload,
+    Iterator
 )
 
 from .typing import (
@@ -786,6 +787,15 @@ class Tensor():
     ###
     ### Misc dunder
     ###
+
+    def __getitem__(self, index) -> Any:
+        return self.data[index]
+
+    def __setitem__(self, index, value) -> Any:
+        self.data[index] = value
+
+    def __iter__(self) -> Iterator:
+        return iter(self.data)
 
     def __repr__(self) -> str:
         return f'Tensor({self.data}, device={self.device})'

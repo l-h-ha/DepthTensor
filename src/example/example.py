@@ -1,4 +1,5 @@
 from ..DepthTensor import Tensor, differentiate, random
 
-a = Tensor([1, 2, 3])
-print(Tensor.where(a > 0, 1.0, 0.0))
+a = Tensor([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+for i in a:
+    print(i)
