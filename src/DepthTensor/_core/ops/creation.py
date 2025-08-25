@@ -32,6 +32,7 @@ def zeros_like(
     /,
     *,
     device: DeviceLike = "cpu",
+    requires_grad: bool = False,
     dtype: Optional[DTypeLike] = None, 
     order: Order = 'K', 
     subok: bool = True,
@@ -46,14 +47,14 @@ def zeros_like(
     if device_op == "cpu":
         return Tensor(
             np.zeros_like(a, dtype=dtype, order=order, subok=subok, shape=shape), 
-            device=device_op
+            device=device_op, requires_grad=requires_grad
         )
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         return Tensor(
             #! As of the time writing this, CuPy does not support subok.
             cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape),
-            device=device_op
+            device=device_op, requires_grad=requires_grad
         )
     
 def ones_like(
@@ -61,6 +62,7 @@ def ones_like(
     /,
     *,
     device: DeviceLike = "cpu",
+    requires_grad: bool = False,
     dtype: Optional[DTypeLike] = None, 
     order: Order = 'K', 
     subok: bool = True,
@@ -75,14 +77,14 @@ def ones_like(
     if device_op == "cpu":
         return Tensor(
             np.ones_like(a, dtype=dtype, order=order, subok=subok, shape=shape), 
-            device=device_op
+            device=device_op, requires_grad=requires_grad
         )
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         return Tensor(
             #! As of the time writing this, CuPy does not support subok.
             cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape),
-            device=device_op
+            device=device_op, requires_grad=requires_grad
         )
     
 ###

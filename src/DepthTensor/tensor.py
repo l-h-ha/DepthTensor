@@ -164,6 +164,33 @@ class Tensor():
     ###
     ###
 
+    def copy(
+        self,
+        *,
+        order: Order = "K",
+        dtype: Optional[DTypeLike] = None,
+        device: Optional[DeviceLike] = None,
+        copy_prev: bool = False, 
+        copy_requires_grad: bool = False, 
+        copy_grad: bool = False
+    ) -> Tensor:
+        t = Tensor(
+            self.data.copy(order=order), 
+            dtype=self.dtype if dtype is None else dtype,
+            device=self.device if device is None else device,
+            prev=self.prev if copy_prev else (),
+            requires_grad=self.requires_grad if copy_requires_grad else False
+        )
+        if copy_grad:
+            t.grad = self.grad
+        return t
+    
+    def to_device(self, device: DeviceLike) -> Tensor:
+        if device == self.device:
+            return self.copy()
+        else:
+            return self.copy(device=device)
+
     def get_device(self) -> DeviceLike:
         return self.device
     def is_device(self, device: DeviceLike) -> bool:
@@ -203,12 +230,13 @@ class Tensor():
         /,
         *,
         device: DeviceLike = "cpu",
+        requires_grad: bool = False,
         dtype: Optional[DTypeLike] = None, 
         order: Order = 'K', 
         subok: bool = True,
         shape: Optional[AxisShapeLike] = None
     ) -> Tensor:
-        return zeros_like(a, device=device, dtype=dtype, order=order, subok=subok, shape=shape)
+        return zeros_like(a, device=device, requires_grad=requires_grad, dtype=dtype, order=order, subok=subok, shape=shape)
     
     @staticmethod
     def ones_like(
@@ -216,12 +244,13 @@ class Tensor():
         /,
         *, 
         device: DeviceLike = "cpu",
+        requires_grad: bool = False,
         dtype: Optional[DTypeLike] = None, 
         order: Order = 'K', 
         subok: bool = True,
         shape: Optional[AxisShapeLike] = None
     ) -> Tensor:
-        return ones_like(a, device=device, dtype=dtype, order=order, subok=subok, shape=shape)
+        return ones_like(a, device=device, requires_grad=requires_grad, dtype=dtype, order=order, subok=subok, shape=shape)
     
     ###
     ### Element-wise
@@ -676,6 +705,7 @@ class Tensor():
         /,
         *,
         device: DeviceLike = "cpu",
+        requires_grad: bool = False,
         axis: Optional[AxisShapeLike] = None,
         dtype: Optional[DTypeLike] = None,
         out: Optional[Union[np.ndarray, Any]] = None,
@@ -683,7 +713,7 @@ class Tensor():
         initial: Any = _NoValue,
         where: Union[bool, ArrayLikeBool] = True
     ) -> Tensor:
-        return sum(a, axis=axis, device=device, dtype=dtype, out=out, keepdims=keepdims, initial=initial, where=where)
+        return sum(a, axis=axis, device=device, requires_grad=requires_grad, dtype=dtype, out=out, keepdims=keepdims, initial=initial, where=where)
 
     @staticmethod
     def max(
@@ -691,13 +721,14 @@ class Tensor():
         /,
         *,
         device: DeviceLike = "cpu",
+        requires_grad: bool = False,
         axis: Optional[ShapeLike] = None, 
         out: Optional[Union[np.ndarray, Any]] = None, 
         keepdims: bool = False, 
         initial: Any = _NoValue, 
         where: Union[bool, ArrayLikeBool] = True
     ) -> Tensor:
-        return max(a, axis=axis, device=device, out=out, keepdims=keepdims, initial=initial, where=where)
+        return max(a, axis=axis, device=device, requires_grad=requires_grad, out=out, keepdims=keepdims, initial=initial, where=where)
     
     @staticmethod
     def maximum(
@@ -707,13 +738,14 @@ class Tensor():
         out: Optional[np.ndarray] = None,
         *,
         device: DeviceLike = "cpu",
+        requires_grad: bool = False,
         where: Union[bool, ArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
         subok: bool = True
     ) -> Tensor:
-        return maximum(x1, x2, out=out, device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+        return maximum(x1, x2, out=out, device=device, requires_grad=requires_grad, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
 
     ###
     ### Dunder Operations

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2025-08-25
+
+### Added
+
+- Additional ```requires_grad``` parameter for static method ```Tensor.zeros_like()```.
+
+- Additional ```requires_grad``` parameter for static method ```Tensor.ones_like()```.
+
+- Additional ```requires_grad``` parameter for static method ```Tensor.max()```.
+
+- Additional ```requires_grad``` parameter for static method ```Tensor.maximum()```.
+
+- Additional ```requires_grad``` parameter for static method ```Tensor.sum()```.
+
+- Method ```Tensor.copy()``` which copies tensors.
+
+- Method ```Tensor.to_device()``` returns a copy of which attribute ```device``` 
+
 ## [1.5.0] - 2025-08-24
 
 ### Added

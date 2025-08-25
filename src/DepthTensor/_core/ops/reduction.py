@@ -41,6 +41,7 @@ def sum(
     /,
     *,
     device: DeviceLike = "cpu",
+    requires_grad: bool = False,
     axis: Optional[AxisShapeLike] = None,
     dtype: Optional[DTypeLike] = None,
     out: Optional[Union[np.ndarray, Any]] = None,
@@ -70,13 +71,14 @@ def sum(
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.sum(arr, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
-    return Tensor(y, device=device_op)
+    return Tensor(y, device=device_op, requires_grad=requires_grad)
 
 def max(
     a: OperandLike,
     /,
     *,
     device: DeviceLike = "cpu",
+    requires_grad: bool = False,
     axis: Optional[ShapeLike] = None, 
     out: Optional[Union[np.ndarray, Any]] = None, 
     keepdims: bool = False, 
@@ -95,7 +97,7 @@ def max(
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.max(arr, axis=axis, out=out, keepdims=keepdims)
-    return Tensor(y, device=device_op)
+    return Tensor(y, device=device_op, requires_grad=requires_grad)
 
 def maximum(
     x1: OperandLike,
@@ -104,6 +106,7 @@ def maximum(
     out: Optional[np.ndarray] = None,
     *,
     device: DeviceLike = "cpu",
+    requires_grad: bool = False,
     where: Union[bool, ArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
@@ -126,7 +129,7 @@ def maximum(
         y = np.maximum(x1, x2, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
     else:
         y = np.maximum(x1, x2, out=out, dtype=dtype, casting=casting)
-    return Tensor(y, device=device_op)
+    return Tensor(y, device=device_op, requires_grad=requires_grad)
 
 ###
 ###
