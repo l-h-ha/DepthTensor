@@ -78,11 +78,19 @@ def wrapper_2in_1out(
         x1.data = y
         return x1
     
-    if isinstance(x1, Tensor) and isinstance(x2, Tensor):
-        requires_grad = x1.requires_grad or x2.requires_grad
-    else:
-        requires_grad = False
-    return Tensor(y, device=device_op, prev=(x1, x2), requires_grad=requires_grad)
+    requires_grad = False
+    prev = ()
+    if isinstance(x1, Tensor):
+        requires_grad = x1.requires_grad
+        prev = (x1,)
+    if isinstance(x2, Tensor):
+        requires_grad = requires_grad or x2.requires_grad
+        if len(prev) == 1:
+            prev = (x1, x2)
+        else:
+            prev = (x2,)
+
+    return Tensor(y, device=device_op, prev=prev, requires_grad=requires_grad)
 
 def wrapper_1in_1out(
     x: OperandLike,
@@ -111,13 +119,12 @@ def wrapper_1in_1out(
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = getattr(cp, func_name)(a, out=out, dtype=dtype, casting=casting)
 
+    requires_grad = False
     if isinstance(x, Tensor):
         if in_place:
             x.data = y
             return x
         requires_grad = x.requires_grad
-    else:
-        requires_grad = False
     return Tensor(y, device=device_op, prev=(x,), requires_grad=requires_grad)
 
 def add(
@@ -268,6 +275,7 @@ def clip(
     /,
     out: Optional[ArrayLike] = None,
     *,
+    requires_grad: bool = False,
     device: DeviceLike = "cpu",
     where: Union[bool, ArrayLikeBool] = True,
     casting: Casting = 'same_kind',
@@ -295,7 +303,7 @@ def clip(
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.clip(arr_a, arr_min, arr_max, out=out)
-    return Tensor(y)
+    return Tensor(y, requires_grad=requires_grad)
 
 ###
 ### Exponents/Logarithms

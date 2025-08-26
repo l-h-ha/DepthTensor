@@ -416,6 +416,7 @@ class Tensor():
         /,
         out: Optional[ArrayLike] = None,
         *,
+        requires_grad: bool = False,
         device: DeviceLike = "cpu",
         where: Union[bool, ArrayLikeBool] = True,
         casting: Casting = 'same_kind',
@@ -423,7 +424,7 @@ class Tensor():
         dtype: Optional[DTypeLike] = None,
         subok: bool = True
     ) -> Tensor:
-        return clip(a, a_min, a_max, out=out, device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
+        return clip(a, a_min, a_max, out=out, requires_grad=requires_grad, device=device, where=where, casting=casting, order=order, dtype=dtype, subok=subok)
     
     @staticmethod
     def sign(

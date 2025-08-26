@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2025-08-27
+
+### Added
+
+- Additional ```requires_grad``` parameter for static method ```Tensor.clip()```.
+
+### Fixed
+
+- Gradient miscalculation in the square operation.
+
+- Output tensors' ```requires_grad``` attributes now adheres to operand tensors'.
+
+### Changed
+
+- Differentiation now does not require both operands as tensor objects, which means that ```tensor**2``` is now differentiable.
+
+- Operations now returns tensors of which ```prev``` attributes contain only tensors.
+
 ## [1.7.0] - 2025-08-26
 
 ### Added

@@ -20,7 +20,7 @@ def differentiate(tensor: Tensor) -> List[Tensor]:
         if t in visited:
             return
         visited.add(t)
-
+        
         for prev in t.prev:
             build(prev)
         topo.append(t)

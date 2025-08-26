@@ -95,7 +95,7 @@ def sum_to_shape(result: Any, target_shape: Tuple, device: DeviceLike) -> Any:
 
 def to_xp_array(a: Union[ArrayLike, TensorLike], device: Optional[DeviceLike] = None) -> ArrayLike:
     """
-    Convert data to numpy.typing.ArrayLike
+    Convert data to numpy.ndarray or cp.ndarray
     """
     from ..tensor import Tensor
     if isinstance(a, Tensor):
@@ -107,15 +107,25 @@ def to_xp_array(a: Union[ArrayLike, TensorLike], device: Optional[DeviceLike] = 
             if device == "cpu":
                 return y
             if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-            return cp.asarray(y)
+            return cp.array(y)
         else:
             if cp is not None and isinstance(y, cp.ndarray):
                 if device == "gpu":
                     return y
                 return cp.asnumpy(y)
             else:
+                if device == "cpu":
+                    return np.array(y)
+                else:
+                    if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+                    return cp.array(y)
+    else:
+        if isinstance(y, np.ndarray):
+            return y
+        else:
+            if cp is not None and isinstance(y, cp.ndarray):
                 return y
-    return y
+            return np.array(y)
 
 ###
 ### 
