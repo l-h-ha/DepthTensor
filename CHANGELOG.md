@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Differentiation now does not require both operands as tensor objects, which means that ```tensor**2``` is now differentiable.
 
-- Operations now returns tensors of which ```prev``` attributes contain only tensors.
+- Operations now return tensors of which ```prev``` attributes contain only tensors.
 
 ## [1.7.0] - 2025-08-26
 
