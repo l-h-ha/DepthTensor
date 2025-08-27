@@ -36,7 +36,8 @@ def where(
     condition: OperandLike,
     /,
     *,
-    device: DeviceLike = "cpu"
+    device: DeviceLike = "cpu",
+    requires_grad: bool = False
 ) -> Tuple[TensorLike, ...]: ...
 
 @overload
@@ -46,7 +47,8 @@ def where(
     y: Optional[OperandLike],
     /,
     *,
-    device: DeviceLike = "cpu"
+    device: DeviceLike = "cpu",
+    requires_grad: bool = False
 ) -> TensorLike: ...
 
 def where(
@@ -55,7 +57,8 @@ def where(
     y: Optional[OperandLike] = None,
     /,
     *,
-    device: DeviceLike = "cpu"
+    device: DeviceLike = "cpu",
+    requires_grad: bool = False
 ) -> Union[Tuple[TensorLike, ...], TensorLike]:
     from ...tensor import Tensor
     #* One parameter overload
@@ -66,7 +69,7 @@ def where(
         else:
             if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
             result = cp.where(data)
-        return tuple([Tensor(array, device=device) for array in result])
+        return tuple([Tensor(array, device=device, requires_grad=requires_grad) for array in result])
     elif x is not None and y is not None:
         data = to_xp_array(condition, device=device)
         x_data = to_xp_array(x, device=device)
@@ -76,7 +79,7 @@ def where(
         else:
             if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
             result = cp.where(data, x_data, y_data)
-        return Tensor(result, device=device)
+        return Tensor(result, device=device, requires_grad=requires_grad)
     else:
         raise ValueError("Both x and y parameters must be given.")
 

@@ -567,6 +567,7 @@ class Tensor():
         /,
         *,
         device: DeviceLike = "cpu",
+        requires_grad: bool = False
     ) -> Tuple[Tensor, ...]: ...
 
     @staticmethod
@@ -578,6 +579,7 @@ class Tensor():
         /,
         *,
         device: DeviceLike = "cpu",
+        requires_grad: bool = False
     ) -> Tensor: ...
 
     @staticmethod
@@ -588,6 +590,7 @@ class Tensor():
         /,
         *,
         device: DeviceLike = "cpu",
+        requires_grad: bool = False
     ) -> Union[Tuple[Tensor, ...], Tensor]:
         device = "cpu"
         if isinstance(condition, Tensor):
@@ -598,7 +601,7 @@ class Tensor():
         if y and isinstance(y, Tensor):
             if y.device != device:
                 raise RuntimeError("Arguments, as tensors, must have the same device.")
-        return where(condition, x, y, device=device)
+        return where(condition, x, y, device=device, requires_grad=requires_grad)
     
     @staticmethod
     def equal(
