@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2025-08-28
+
+### Added
+
+- Function ```DepthTensor.create_2in_1out()``` which returns a generator function that allows custom implemented operations of two operands with custom differentiations.
+
+- Function ```DepthTensor.create_1in_1out()``` which returns a generator function that allows custom implemented operations of one operand with custom differentiations.
+
 ## [1.9.0] - 2025-08-28
 
 ### Added

@@ -95,7 +95,7 @@ def sum_to_shape(result: Any, target_shape: Tuple, device: DeviceLike) -> Any:
 
 def to_xp_array(a: Union[ArrayLike, TensorLike], device: Optional[DeviceLike] = None) -> ArrayLike:
     """
-    Convert data to numpy.ndarray or cp.ndarray
+    Convert data to numpy.ndarray/cp.ndarray.
     """
     from ..tensor import Tensor
     if isinstance(a, Tensor):

@@ -86,7 +86,7 @@ def ones_like(
             cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape),
             device=device_op, requires_grad=requires_grad
         )
-    
+
 ###
 ###
 ###
