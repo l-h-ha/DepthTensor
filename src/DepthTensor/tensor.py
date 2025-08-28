@@ -6,19 +6,20 @@ from typing import (
     Tuple, 
     Callable, 
     overload,
-    Iterator
+    Iterator,
+    List
 )
 
 from .typing import (
-    ArrayLike, 
+    NDArrayLike, 
     DTypeLike,
     Order,
     DeviceLike, 
     ShapeLike, 
-    ArrayLikeBool,
+    NDArrayLikeBool,
     Casting, 
-    AxisShapeLike,
-    OperandLike
+    OperandLike,
+    AxisLike
 )
 
 from ._core import (
@@ -107,11 +108,11 @@ def _wrapper_1in_1out(y, diff_func, x, record_op):
 class Tensor():
     device: DeviceLike
     backward: Optional[Callable[[], None]]
-    data: Union[np.ndarray, Any]
+    data: NDArrayLike
 
     def __init__(
         self,
-        obj: Union[ArrayLike, Any, Tensor],
+        obj: OperandLike,
         /,
         *,
         dtype: Optional[DTypeLike] = None,
@@ -127,26 +128,39 @@ class Tensor():
     ) -> None:
         #* Convert to xp.ndarray
         if isinstance(obj, np.ndarray):
-            self.data = xp_array_to_device(obj, device)
-            self.device = "cpu"
+            if obj.dtype.kind in "uifb":
+                self.data = xp_array_to_device(obj, device)
+                self.device = "cpu"
+            else:
+                raise TypeError("Expected a numerical NumPy array.")
         else:
-            if cp is not None:
-                if isinstance(obj, cp.ndarray):
+            if cp is not None and isinstance(obj, cp.ndarray):
+                if obj.dtype.kind in "uifb": # type: ignore
                     self.data = xp_array_to_device(obj, device)
-                    self.device = "gpu"
+                    self.device = "gpu" 
                 else:
-                    if device == "gpu":
+                    raise TypeError("Expected a numerical CuPy array.")
+            else:
+                if device == "gpu":
+                    if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+                    if isinstance(obj, (int, float, List, Tuple, cp.floating, cp.integer, cp.bool_)):
                         self.data = cp.array(obj, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin, blocking=blocking)
                         self.device = "gpu"
+                    elif isinstance(obj, Tensor):
+                        self.data = cp.array(obj.data, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin, blocking=blocking)
+                        self.device = "gpu"
                     else:
+                        raise RuntimeError("Expected data of type: int, float, list, tuple, numpy.ndarray, cupy.ndarray.")
+                else:
+                    if isinstance(obj, (int, float, List, Tuple, np.integer, np.floating, np.bool)):
                         self.data = np.array(obj, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin)
                         self.device = "cpu"
-            else:
-                if device == "cpu":
-                    self.data = np.array(obj, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin)
-                    self.device = "cpu"
-                else:
-                    raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+                    elif isinstance(obj, Tensor):
+                        self.data = np.array(obj.data, dtype=dtype, copy=copy, order=order, subok=subok, ndmin=ndmin)
+                        self.device = "cpu"
+                    else:
+                        raise RuntimeError("Expected data of type: int, float, list, tuple, numpy.ndarray, cupy.ndarray.")
+
         #* Convert to dtype (if provided)
         if dtype is not None and dtype != self.data.dtype:
             self.data = self.data.astype(dtype) 
@@ -185,10 +199,43 @@ class Tensor():
             t.grad = self.grad
         return t
     
-    def to_device(self, device: DeviceLike) -> Tensor:
+    def make_differentiable(self, grad: Optional[Union[Tensor, np.ndarray, Any]] = None) -> None:
+        if not self.requires_grad:
+            self.requires_grad = True
+            
+            if grad is None:
+                if self.device == "cpu":
+                    self.grad = np.zeros(self.shape)
+                else:
+                    if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+                    self.grad = cp.zeros(self.shape)
+            else:
+                if isinstance(grad, Tensor):
+                    if grad.device != self.device:
+                        raise RuntimeError("There is a mismatch in grad's device and tensor's device.")
+                    self.grad = grad.data
+                elif isinstance(grad, np.ndarray):
+                    if self.device == "gpu":
+                        raise RuntimeError("Expected grad parameter to be a cupy.ndarray.")
+                    self.grad = grad
+                elif cp is not None and isinstance(grad, cp.ndarray):
+                    if self.device == "cpu":
+                        raise RuntimeError("Expected grad parameter to be a numpy.ndarray.")
+                    self.grad = grad
+                else:
+                    raise RuntimeError("Expected grad parameter of specific types: Tensor, numpy.ndarray, cupy.ndarray.")
+
+    def to_device(self, device: DeviceLike, in_place: bool = False, clear_prev: bool = True) -> Tensor:
         if device == self.device:
+            if in_place:
+                return self
             return self.copy()
         else:
+            if in_place:
+                self.device = device
+                self.prev = () if clear_prev else self.prev
+                self.data = xp_array_to_device(self.data, device=device)
+                return self
             return self.copy(device=device)
 
     def get_device(self) -> DeviceLike:
@@ -234,7 +281,7 @@ class Tensor():
         dtype: Optional[DTypeLike] = None, 
         order: Order = 'K', 
         subok: bool = True,
-        shape: Optional[AxisShapeLike] = None
+        shape: Optional[ShapeLike] = None
     ) -> Tensor:
         return zeros_like(a, device=device, requires_grad=requires_grad, dtype=dtype, order=order, subok=subok, shape=shape)
     
@@ -248,7 +295,7 @@ class Tensor():
         dtype: Optional[DTypeLike] = None, 
         order: Order = 'K', 
         subok: bool = True,
-        shape: Optional[AxisShapeLike] = None
+        shape: Optional[ShapeLike] = None
     ) -> Tensor:
         return ones_like(a, device=device, requires_grad=requires_grad, dtype=dtype, order=order, subok=subok, shape=shape)
     
@@ -261,13 +308,13 @@ class Tensor():
         x1: OperandLike, 
         x2: OperandLike, 
         /,
-        out: Optional[Union[np.ndarray, Any]] = None,
+        out: Optional[NDArrayLike] = None,
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[ArrayLikeBool, bool] = True,
+        where: Union[NDArrayLikeBool, bool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
@@ -283,13 +330,13 @@ class Tensor():
         x1: OperandLike, 
         x2: OperandLike, 
         /,
-        out: Optional[Union[np.ndarray, Any]] = None,
+        out: Optional[NDArrayLike] = None,
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[ArrayLikeBool, bool] = True,
+        where: Union[NDArrayLikeBool, bool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
@@ -305,13 +352,13 @@ class Tensor():
         x1: OperandLike, 
         x2: OperandLike, 
         /,
-        out: Optional[Union[np.ndarray, Any]] = None,
+        out: Optional[NDArrayLike] = None,
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[ArrayLikeBool, bool] = True,
+        where: Union[NDArrayLikeBool, bool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
@@ -327,7 +374,7 @@ class Tensor():
         x1: OperandLike, 
         x2: OperandLike, 
         /,
-        out: Optional[Union[np.ndarray, Any]] = None,
+        out: Optional[NDArrayLike] = None,
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
@@ -348,13 +395,13 @@ class Tensor():
         x1: OperandLike, 
         x2: OperandLike, 
         /,
-        out: Optional[Union[np.ndarray, Any]] = None,
+        out: Optional[NDArrayLike] = None,
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[ArrayLikeBool, bool] = True,
+        where: Union[NDArrayLikeBool, bool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
@@ -370,13 +417,13 @@ class Tensor():
         x1: OperandLike, 
         x2: OperandLike, 
         /,
-        out: Optional[Union[np.ndarray, Any]] = None,
+        out: Optional[NDArrayLike] = None,
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[ArrayLikeBool, bool] = True,
+        where: Union[NDArrayLikeBool, bool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
@@ -391,13 +438,13 @@ class Tensor():
     def negative(
         x: OperandLike,
         /,
-        out: Optional[Union[np.ndarray, Any]] = None, 
+        out: Optional[NDArrayLike] = None, 
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[ArrayLikeBool, bool] = True,
+        where: Union[NDArrayLikeBool, bool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
@@ -414,11 +461,11 @@ class Tensor():
         a_min: OperandLike,
         a_max: OperandLike,
         /,
-        out: Optional[ArrayLike] = None,
+        out: Optional[NDArrayLike] = None,
         *,
         requires_grad: bool = False,
         device: DeviceLike = "cpu",
-        where: Union[bool, ArrayLikeBool] = True,
+        where: Union[bool, NDArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
@@ -430,13 +477,13 @@ class Tensor():
     def sign(
         x: OperandLike,
         /,
-        out: Optional[Union[np.ndarray, Any]] = None, 
+        out: Optional[NDArrayLike] = None, 
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[ArrayLikeBool, bool] = True,
+        where: Union[NDArrayLikeBool, bool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
@@ -451,13 +498,13 @@ class Tensor():
     def abs(
         x: OperandLike,
         /,
-        out: Optional[Union[np.ndarray, Any]] = None, 
+        out: Optional[NDArrayLike] = None, 
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[ArrayLikeBool, bool] = True,
+        where: Union[NDArrayLikeBool, bool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,
@@ -476,13 +523,13 @@ class Tensor():
     def exp(
         x: OperandLike, 
         /, 
-        out: Optional[Union[np.ndarray, Any]] = None,
+        out: Optional[NDArrayLike] = None,
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[bool, ArrayLikeBool] = True, 
+        where: Union[bool, NDArrayLikeBool] = True, 
         casting: Casting = 'same_kind',
         order: Order = 'K', 
         dtype: Optional[DTypeLike] = None, 
@@ -497,13 +544,13 @@ class Tensor():
     def sqrt(
         x: OperandLike, 
         /, 
-        out: Optional[Union[np.ndarray, Any]] = None,
+        out: Optional[NDArrayLike] = None,
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[bool, ArrayLikeBool] = True, 
+        where: Union[bool, NDArrayLikeBool] = True, 
         casting: Casting = 'same_kind',
         order: Order = 'K', 
         dtype: Optional[DTypeLike] = None, 
@@ -518,13 +565,13 @@ class Tensor():
     def log(
         x: OperandLike, 
         /, 
-        out: Optional[Union[np.ndarray, Any]] = None,
+        out: Optional[NDArrayLike] = None,
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[bool, ArrayLikeBool] = True, 
+        where: Union[bool, NDArrayLikeBool] = True, 
         casting: Casting = 'same_kind',
         order: Order = 'K', 
         dtype: Optional[DTypeLike] = None, 
@@ -539,13 +586,13 @@ class Tensor():
     def square(
         x: OperandLike, 
         /, 
-        out: Optional[Union[np.ndarray, Any]] = None,
+        out: Optional[NDArrayLike] = None,
         *,
         device: DeviceLike = "cpu",
         in_place: bool = False,
         record_op: bool = True,
 
-        where: Union[bool, ArrayLikeBool] = True, 
+        where: Union[bool, NDArrayLikeBool] = True, 
         casting: Casting = 'same_kind',
         order: Order = 'K', 
         dtype: Optional[DTypeLike] = None, 
@@ -608,10 +655,10 @@ class Tensor():
         x1: OperandLike,
         x2: OperandLike,
         /,
-        out: Optional[ArrayLikeBool] = None,
+        out: Optional[NDArrayLikeBool] = None,
         *,
         device: DeviceLike = "cpu",
-        where: Union[bool, ArrayLikeBool] = True,
+        where: Union[bool, NDArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
@@ -624,10 +671,10 @@ class Tensor():
         x1: OperandLike,
         x2: OperandLike,
         /,
-        out: Optional[ArrayLikeBool] = None,
+        out: Optional[NDArrayLikeBool] = None,
         *,
         device: DeviceLike = "cpu",
-        where: Union[bool, ArrayLikeBool] = True,
+        where: Union[bool, NDArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
@@ -640,10 +687,10 @@ class Tensor():
         x1: OperandLike,
         x2: OperandLike,
         /,
-        out: Optional[ArrayLikeBool] = None,
+        out: Optional[NDArrayLikeBool] = None,
         *,
         device: DeviceLike = "cpu",
-        where: Union[bool, ArrayLikeBool] = True,
+        where: Union[bool, NDArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
@@ -656,10 +703,10 @@ class Tensor():
         x1: OperandLike,
         x2: OperandLike,
         /,
-        out: Optional[ArrayLikeBool] = None,
+        out: Optional[NDArrayLikeBool] = None,
         *,
         device: DeviceLike = "cpu",
-        where: Union[bool, ArrayLikeBool] = True,
+        where: Union[bool, NDArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
@@ -672,10 +719,10 @@ class Tensor():
         x1: OperandLike,
         x2: OperandLike,
         /,
-        out: Optional[ArrayLikeBool] = None,
+        out: Optional[NDArrayLikeBool] = None,
         *,
         device: DeviceLike = "cpu",
-        where: Union[bool, ArrayLikeBool] = True,
+        where: Union[bool, NDArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
@@ -688,10 +735,10 @@ class Tensor():
         x1: OperandLike,
         x2: OperandLike,
         /,
-        out: Optional[ArrayLikeBool] = None,
+        out: Optional[NDArrayLikeBool] = None,
         *,
         device: DeviceLike = "cpu",
-        where: Union[bool, ArrayLikeBool] = True,
+        where: Union[bool, NDArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: None = None,
@@ -710,12 +757,12 @@ class Tensor():
         *,
         device: DeviceLike = "cpu",
         requires_grad: bool = False,
-        axis: Optional[AxisShapeLike] = None,
+        axis: Optional[AxisLike] = None,
         dtype: Optional[DTypeLike] = None,
-        out: Optional[Union[np.ndarray, Any]] = None,
+        out: Optional[NDArrayLike] = None,
         keepdims: bool = True,
         initial: Any = _NoValue,
-        where: Union[bool, ArrayLikeBool] = True
+        where: Union[bool, NDArrayLikeBool] = True
     ) -> Tensor:
         return sum(a, axis=axis, device=device, requires_grad=requires_grad, dtype=dtype, out=out, keepdims=keepdims, initial=initial, where=where)
 
@@ -726,11 +773,11 @@ class Tensor():
         *,
         device: DeviceLike = "cpu",
         requires_grad: bool = False,
-        axis: Optional[ShapeLike] = None, 
-        out: Optional[Union[np.ndarray, Any]] = None, 
+        axis: Optional[AxisLike] = None, 
+        out: Optional[NDArrayLike] = None, 
         keepdims: bool = False, 
         initial: Any = _NoValue, 
-        where: Union[bool, ArrayLikeBool] = True
+        where: Union[bool, NDArrayLikeBool] = True
     ) -> Tensor:
         return max(a, axis=axis, device=device, requires_grad=requires_grad, out=out, keepdims=keepdims, initial=initial, where=where)
     
@@ -743,7 +790,7 @@ class Tensor():
         *,
         device: DeviceLike = "cpu",
         requires_grad: bool = False,
-        where: Union[bool, ArrayLikeBool] = True,
+        where: Union[bool, NDArrayLikeBool] = True,
         casting: Casting = 'same_kind',
         order: Order = 'K',
         dtype: Optional[DTypeLike] = None,

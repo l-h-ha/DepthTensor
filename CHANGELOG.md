@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2025-08-28
+
+### Fixed
+
+- Instantiating tensors with non-numerical values now results in an error.
+
+- Some computation functions, such as add or subtract, might output tensors of unexpected devices adhering to the device parameter having a default value of "cpu" (now defaults to None as of these occurrences,) leading to two gpu tensors outputting a cpu tensor.
+
+### Added
+
+- Added method ```Tensor.make_differentiable()``` which transforms (in-place) a tensor into a differentiable one.
+
+- Added method ```Tensor.to_device()``` which either transforms (in-place) a tensor into another of given device, or creates a copy of given device.
+
+### Removed
+
+- Type Alias (in DepthTensor.typing) ```AxisShapeLike``` as ```ShapeLike``` already does the job.
+
+### Changed
+
+- Type Aliases (in DepthTensor.typing) ```ArrayLike``` and ```ArrayLikeBool``` to ```NDArrayLike``` and ```NDArrayLikeBool```, respectively.
+
+- Some computational functions now have the ```device``` arguments defaulting to ```None```.
+
 ## [1.10.0] - 2025-08-28
 
 ### Added

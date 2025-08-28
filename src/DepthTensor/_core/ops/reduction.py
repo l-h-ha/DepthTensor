@@ -6,12 +6,12 @@ from typing import (
 
 from ...typing import (
     TensorLike, 
-    ShapeLike,
-    ArrayLikeBool,
+    NDArrayLike,
+    NDArrayLikeBool,
     Casting,
     Order,
     DTypeLike,
-    AxisShapeLike,
+    AxisLike,
     OperandLike,
     DeviceLike
 )
@@ -42,12 +42,12 @@ def sum(
     *,
     device: DeviceLike = "cpu",
     requires_grad: bool = False,
-    axis: Optional[AxisShapeLike] = None,
+    axis: Optional[AxisLike] = None,
     dtype: Optional[DTypeLike] = None,
     out: Optional[Union[np.ndarray, Any]] = None,
     keepdims: bool = True,
     initial: Any = _NoValue,
-    where: Union[bool, ArrayLikeBool] = True
+    where: Union[bool, NDArrayLikeBool] = True
 ) -> TensorLike:
     from ...tensor import Tensor
     if isinstance(a, Tensor):
@@ -79,11 +79,11 @@ def max(
     *,
     device: DeviceLike = "cpu",
     requires_grad: bool = False,
-    axis: Optional[ShapeLike] = None, 
+    axis: Optional[AxisLike] = None, 
     out: Optional[Union[np.ndarray, Any]] = None, 
     keepdims: bool = False, 
     initial: Any = _NoValue, 
-    where: Union[bool, ArrayLikeBool] = True
+    where: Union[bool, NDArrayLikeBool] = True
 ) -> TensorLike:
     from ...tensor import Tensor
     if isinstance(a, Tensor):
@@ -107,7 +107,7 @@ def maximum(
     *,
     device: DeviceLike = "cpu",
     requires_grad: bool = False,
-    where: Union[bool, ArrayLikeBool] = True,
+    where: Union[bool, NDArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -124,11 +124,13 @@ def maximum(
     else:
         device_op = device
 
-    x1, x2 = to_xp_array(x1, device=device_op), to_xp_array(x2, device=device_op)
+    _x1: NDArrayLike = to_xp_array(x1, device=device_op)
+    _x2: NDArrayLike = to_xp_array(x2, device=device_op)
+
     if device_op == "cpu":
-        y = np.maximum(x1, x2, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
+        y = np.maximum(_x1, _x2, out=out, dtype=dtype, where=where, casting=casting, order=order, subok=subok)
     else:
-        y = np.maximum(x1, x2, out=out, dtype=dtype, casting=casting)
+        y = np.maximum(_x1, _x2, out=out, dtype=dtype, casting=casting)
     return Tensor(y, device=device_op, requires_grad=requires_grad)
 
 ###

@@ -7,8 +7,8 @@ from typing import (
 
 from ..typing import (
     DeviceLike, 
-    TensorLike, 
-    ArrayLike
+    OperandLike,
+    NDArrayLike
 )
 
 from .exceptions import (
@@ -93,7 +93,7 @@ def sum_to_shape(result: Any, target_shape: Tuple, device: DeviceLike) -> Any:
             result = cp.sum(result, axis=tuple(stretched_axes), keepdims=True)
     return result
 
-def to_xp_array(a: Union[ArrayLike, TensorLike], device: Optional[DeviceLike] = None) -> ArrayLike:
+def to_xp_array(a: OperandLike, device: Optional[DeviceLike] = None) -> NDArrayLike:
     """
     Convert data to numpy.ndarray/cp.ndarray.
     """
@@ -111,7 +111,8 @@ def to_xp_array(a: Union[ArrayLike, TensorLike], device: Optional[DeviceLike] = 
         else:
             if cp is not None and isinstance(y, cp.ndarray):
                 if device == "gpu":
-                    return y
+                    #? In this scope, y is a cp.ndarray; however, pylance still thinks y is an OperandLike.
+                    return y # pyright: ignore[reportReturnType]
                 return cp.asnumpy(y)
             else:
                 if device == "cpu":
@@ -124,8 +125,23 @@ def to_xp_array(a: Union[ArrayLike, TensorLike], device: Optional[DeviceLike] = 
             return y
         else:
             if cp is not None and isinstance(y, cp.ndarray):
-                return y
+                #? In this scope, y is a cp.ndarray; however, pylance still thinks y is an OperandLike.
+                return y # pyright: ignore[reportReturnType]
             return np.array(y)
+
+def get_device(a: OperandLike) -> DeviceLike:
+    from ..tensor import Tensor
+    if isinstance(a, Tensor):
+        return a.device
+    elif isinstance(a, (np.ndarray, np.floating, np.integer, np.bool)):
+        return "cpu"
+    elif cp is not None and isinstance(a, (cp.ndarray, cp.integer, cp.floating, cp.bool_)):
+        return "gpu"
+    elif isinstance(a, (int, float, list, tuple, bool)):
+        return "cpu"
+    else:
+        raise RuntimeError("Invalid argument type.")
+    
 
 ###
 ### 

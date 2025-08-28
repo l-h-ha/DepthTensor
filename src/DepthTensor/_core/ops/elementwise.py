@@ -10,8 +10,8 @@ from ...typing import (
     DTypeLike, 
     Casting,
     Order, 
-    ArrayLikeBool,
-    ArrayLike,
+    NDArrayLikeBool,
+    NDArrayLike,
     OperandLike,
     DeviceLike,
     Op_2in_1out_Protocol,
@@ -28,7 +28,8 @@ from ..exceptions import (
 )
 
 from ..utils import (
-    to_xp_array
+    to_xp_array,
+    get_device
 )
 
 import numpy as np
@@ -49,7 +50,7 @@ def create_2in_1out(
         x1: OperandLike,
         x2: OperandLike,
         *,
-        device: DeviceLike = "cpu",
+        device: Optional[DeviceLike] = None,
         in_place: bool = False,
         requires_grad: bool = True,
         **kwds: Any
@@ -65,14 +66,24 @@ def create_2in_1out(
         if is_tensor_op and isinstance(x1, Tensor):
             device_op = x1.device
         else:
-            device_op = device
+            if device is None:
+                _x1_device = get_device(x1)
+                if _x1_device != get_device(x2):
+                    raise DeviceMismatch(DEVICE_MISMATCH_MSG)
+                device_op = _x1_device
+            else:
+                device_op = device
 
         a1, a2 = to_xp_array(x1, device=device_op), to_xp_array(x2, device=device_op)
-        y = op(a1, a2, device=device, **kwds)
-        
+        y = op(a1, a2, device=device_op, **kwds)
+
         if is_tensor_op and in_place and isinstance(x1, Tensor):
-            x1.data = y
-            return x1
+            if isinstance(y, Tensor):
+                x1.data = y.data
+                return x1
+            else:
+                x1.data = y
+                return x1
         
         y_requires_grad = False
         prev = ()
@@ -86,7 +97,13 @@ def create_2in_1out(
             else:
                 prev = (x2,)
 
-        y = Tensor(y, device=device_op, prev=prev, requires_grad=y_requires_grad and requires_grad)
+        if isinstance(y, Tensor):
+            y.to_device(device_op, in_place=True)
+            y.prev = prev
+            if y_requires_grad and requires_grad:
+                y.make_differentiable()
+        else:
+            y = Tensor(y, device=device_op, prev=prev, requires_grad=y_requires_grad and requires_grad)
         if diff is None:
             return y
         else:
@@ -108,7 +125,7 @@ def create_1in_1out(
     def func(
         x: OperandLike,
         *,
-        device: DeviceLike = "cpu",
+        device: Optional[DeviceLike] = None,
         in_place: bool = False,
         requires_grad: bool = True,
         **kwds: Any
@@ -117,11 +134,14 @@ def create_1in_1out(
         if isinstance(x, Tensor):
             device_op = x.device
         else:
-            device_op = device
+            if device is None:
+                device_op = get_device(x)
+            else:
+                device_op = device
 
         a = to_xp_array(x, device=device_op)
-        y = op(a, device=device, **kwds)
-        
+        y = op(a, device=device_op, **kwds)
+
         y_requires_grad = False
         if isinstance(x, Tensor):
             if in_place:
@@ -129,7 +149,13 @@ def create_1in_1out(
                 return x
             y_requires_grad = x.requires_grad
 
-        y = Tensor(y, device=device_op, prev=(x,), requires_grad=y_requires_grad and requires_grad)
+        if isinstance(y, Tensor):
+            y.to_device(device_op)
+            y.prev = (x,)
+            if y_requires_grad and requires_grad:
+                y.make_differentiable()
+        else:
+            y = Tensor(y, device=device_op, prev=(x,), requires_grad=y_requires_grad and requires_grad)
         if diff is None:
             return y
         else:
@@ -146,12 +172,12 @@ def wrapper_2in_1out(
     x1: OperandLike, 
     x2: OperandLike, 
     /,
-    out: Optional[Union[np.ndarray, Any]] = None,
+    out: Optional[NDArrayLike] = None,
     *,
     func_name: str,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[ArrayLikeBool, bool] = True,
+    where: Union[NDArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -170,7 +196,14 @@ def wrapper_2in_1out(
     if is_tensor_op and isinstance(x1, Tensor):
         device_op = x1.device
     else:
-        device_op = device
+        if device is None:
+            _x1_device = get_device(x1)
+            if _x1_device != get_device(x2):
+                raise DeviceMismatch(DEVICE_MISMATCH_MSG)
+            else:
+                device_op = _x1_device
+        else:
+            device_op = device
 
     a1, a2 = to_xp_array(x1, device=device_op), to_xp_array(x2, device=device_op)
     if device_op == "cpu":
@@ -203,12 +236,12 @@ def wrapper_2in_1out(
 def wrapper_1in_1out(
     x: OperandLike,
     /,
-    out: Optional[Union[np.ndarray, Any]] = None, 
+    out: Optional[NDArrayLike] = None, 
     *,
     func_name: str,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[ArrayLikeBool, bool] = True,
+    where: Union[NDArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -218,7 +251,10 @@ def wrapper_1in_1out(
     if isinstance(x, Tensor):
         device_op = x.device
     else:
-        device_op = device
+        if device is None:
+            device_op = get_device(device)
+        else:
+            device_op = device
 
     a = to_xp_array(x, device=device_op)
     if device_op:
@@ -243,11 +279,11 @@ def add(
     x1: OperandLike, 
     x2: OperandLike, 
     /,
-    out: Optional[Union[np.ndarray, Any]] = None,
+    out: Optional[NDArrayLike] = None,
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[ArrayLikeBool, bool] = True,
+    where: Union[NDArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -259,11 +295,11 @@ def subtract(
     x1: OperandLike, 
     x2: OperandLike, 
     /,
-    out: Optional[Union[np.ndarray, Any]] = None,
+    out: Optional[NDArrayLike] = None,
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[ArrayLikeBool, bool] = True,
+    where: Union[NDArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -275,11 +311,11 @@ def multiply(
     x1: OperandLike, 
     x2: OperandLike, 
     /,
-    out: Optional[Union[np.ndarray, Any]] = None,
+    out: Optional[NDArrayLike] = None,
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[ArrayLikeBool, bool] = True,
+    where: Union[NDArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -291,9 +327,9 @@ def matmul(
     x1: OperandLike, 
     x2: OperandLike, 
     /,
-    out: Optional[Union[np.ndarray, Any]] = None,
+    out: Optional[NDArrayLike] = None,
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
     casting: Casting = 'same_kind',
     order: Order = 'K',
@@ -306,11 +342,11 @@ def divide(
     x1: OperandLike, 
     x2: OperandLike, 
     /,
-    out: Optional[Union[np.ndarray, Any]] = None,
+    out: Optional[NDArrayLike] = None,
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[ArrayLikeBool, bool] = True,
+    where: Union[NDArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -322,11 +358,11 @@ def power(
     x1: OperandLike, 
     x2: OperandLike, 
     /,
-    out: Optional[Union[np.ndarray, Any]] = None,
+    out: Optional[NDArrayLike] = None,
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[ArrayLikeBool, bool] = True,
+    where: Union[NDArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -338,11 +374,11 @@ def power(
 def negative(
     x: OperandLike,
     /,
-    out: Optional[Union[np.ndarray, Any]] = None, 
+    out: Optional[NDArrayLike] = None, 
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[ArrayLikeBool, bool] = True,
+    where: Union[NDArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -353,11 +389,11 @@ def negative(
 def sign(
     x: OperandLike,
     /,
-    out: Optional[Union[np.ndarray, Any]] = None, 
+    out: Optional[NDArrayLike] = None, 
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[ArrayLikeBool, bool] = True,
+    where: Union[NDArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -368,11 +404,11 @@ def sign(
 def abs(
     x: OperandLike,
     /,
-    out: Optional[Union[np.ndarray, Any]] = None, 
+    out: Optional[NDArrayLike] = None, 
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[ArrayLikeBool, bool] = True,
+    where: Union[NDArrayLikeBool, bool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -385,11 +421,11 @@ def clip(
     a_min: OperandLike,
     a_max: OperandLike,
     /,
-    out: Optional[ArrayLike] = None,
+    out: Optional[NDArrayLike] = None,
     *,
     requires_grad: bool = False,
-    device: DeviceLike = "cpu",
-    where: Union[bool, ArrayLikeBool] = True,
+    device: Optional[DeviceLike] = None,
+    where: Union[bool, NDArrayLikeBool] = True,
     casting: Casting = 'same_kind',
     order: Order = 'K',
     dtype: Optional[DTypeLike] = None,
@@ -424,11 +460,11 @@ def clip(
 def exp(
     x: OperandLike, 
     /, 
-    out: Optional[Union[np.ndarray, Any]] = None,
+    out: Optional[NDArrayLike] = None,
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[bool, ArrayLikeBool] = True, 
+    where: Union[bool, NDArrayLikeBool] = True, 
     casting: Casting = 'same_kind',
     order: Order = 'K', 
     dtype: Optional[DTypeLike] = None, 
@@ -439,11 +475,11 @@ def exp(
 def sqrt(
     x: OperandLike, 
     /, 
-    out: Optional[Union[np.ndarray, Any]] = None,
+    out: Optional[NDArrayLike] = None,
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[bool, ArrayLikeBool] = True, 
+    where: Union[bool, NDArrayLikeBool] = True, 
     casting: Casting = 'same_kind',
     order: Order = 'K', 
     dtype: Optional[DTypeLike] = None, 
@@ -454,11 +490,11 @@ def sqrt(
 def log(
     x: OperandLike, 
     /, 
-    out: Optional[Union[np.ndarray, Any]] = None,
+    out: Optional[NDArrayLike] = None,
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[bool, ArrayLikeBool] = True, 
+    where: Union[bool, NDArrayLikeBool] = True, 
     casting: Casting = 'same_kind',
     order: Order = 'K', 
     dtype: Optional[DTypeLike] = None, 
@@ -469,11 +505,11 @@ def log(
 def square(
     x: OperandLike, 
     /, 
-    out: Optional[Union[np.ndarray, Any]] = None,
+    out: Optional[NDArrayLike] = None,
     *,
-    device: DeviceLike = "cpu",
+    device: Optional[DeviceLike] = None,
     in_place: bool = False,
-    where: Union[bool, ArrayLikeBool] = True, 
+    where: Union[bool, NDArrayLikeBool] = True, 
     casting: Casting = 'same_kind',
     order: Order = 'K', 
     dtype: Optional[DTypeLike] = None, 

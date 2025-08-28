@@ -2,7 +2,8 @@ from typing import (
     TypeAlias, 
     Union, 
     Literal, 
-    Tuple, 
+    Tuple,
+    List,
     TYPE_CHECKING,
     Protocol,
     Any,
@@ -18,9 +19,8 @@ import numpy.typing as npt
 
 DeviceLike: TypeAlias = Literal["cpu", "gpu"]
 ScalarLike: TypeAlias = Union[int, float, bool]
-AxisLike: TypeAlias = Union[int, Tuple[int, ...]]
 ShapeLike: TypeAlias = Tuple[int, ...]
-AxisShapeLike: TypeAlias = Union[int, ShapeLike]
+AxisLike: TypeAlias = Union[int, ShapeLike]
 Order: TypeAlias = Literal['K', 'A', 'C', 'F']
 Casting: TypeAlias = Literal['no', 'equiv', 'safe', 'same_kind', 'unsafe']
 
@@ -36,9 +36,9 @@ int32: TypeAlias = np.int32
 int64: TypeAlias = np.int64
 double: TypeAlias = np.double
 
-ArrayLike = Union[npt.NDArray, ScalarLike]
-ArrayLikeBool = npt.NDArray[np.bool_]
-OperandLike: TypeAlias = Union[ArrayLike, TensorLike]
+NDArrayLike: TypeAlias = Union[npt.NDArray[np.number], Any]
+NDArrayLikeBool: TypeAlias = Union[npt.NDArray[np.bool_], Any]
+OperandLike: TypeAlias = Union[ScalarLike, NDArrayLike, NDArrayLikeBool, TensorLike, List, Tuple]
 
 class Func_2in_1out_Protocol(Protocol):
     def __call__(
@@ -54,20 +54,20 @@ class Func_2in_1out_Protocol(Protocol):
 class Op_2in_1out_Protocol(Protocol):
     def __call__(
         self,
-        x1: ArrayLike,
-        x2: ArrayLike,
+        x1: NDArrayLike,
+        x2: NDArrayLike,
         *,
         device: DeviceLike = "cpu",
         **kwds: Any
-    ) -> ArrayLike: ...
+    ) -> OperandLike: ...
 
 class Diff_2in_1out_Protocol(Protocol):
     def __call__(
         self,
         result: TensorLike,
-        x1: ArrayLike,
-        x2: ArrayLike
-    ) -> Tuple[Callable[[], ArrayLike], Callable[[], ArrayLike]]: ...
+        x1: NDArrayLike,
+        x2: NDArrayLike
+    ) -> Tuple[Callable[[], NDArrayLike], Callable[[], NDArrayLike]]: ...
 
 class Func_1in_1out_Protocol(Protocol):
     def __call__(
@@ -82,18 +82,18 @@ class Func_1in_1out_Protocol(Protocol):
 class Op_1in_1out_Protocol(Protocol):
     def __call__(
         self,
-        x: ArrayLike,
+        x: NDArrayLike,
         *,
         device: DeviceLike = "cpu",
         **kwds: Any
-    ) -> ArrayLike: ...
+    ) -> OperandLike: ...
 
 class Diff_1in_1out_Protocol(Protocol):
     def __call__(
         self,
         result: TensorLike,
-        x: ArrayLike,
-    ) -> Callable[[], ArrayLike]: ...
+        x: NDArrayLike,
+    ) -> Callable[[], NDArrayLike]: ...
 
 __all__ = [
     'DTypeLike', 
@@ -108,12 +108,11 @@ __all__ = [
     'int64',
     'double',
     'DeviceLike', 
-    'AxisShapeLike', 
     'Order', 
     'AxisLike', 
     'ScalarLike', 
-    'ArrayLike', 
-    'ArrayLikeBool', 
+    'NDArrayLike', 
+    'NDArrayLikeBool', 
     'ShapeLike',
     'TensorLike', 
     'OperandLike',

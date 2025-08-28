@@ -19,7 +19,7 @@ except (ImportError, ModuleNotFoundError):
     cp = None
 
 ###
-### Arithmetics
+###
 ###
 
 def wrapper_2in_diff(result: TensorLike, x1: OperandLike, x2: OperandLike, callback_x1: Callable, callback_x2: Callable) -> TensorLike:
@@ -43,6 +43,10 @@ def wrapper_1in_diff(result: TensorLike, x: OperandLike, callback_x1: Callable) 
             x.grad += callback_x1(x.shape, x.device, _x)
     result.backward = backward
     return result
+
+###
+### Arithmetics
+###
 
 def add_diff(result: TensorLike, x1: OperandLike, x2: OperandLike) -> TensorLike:
     def callback_x1(shape, device, _x1, _x2):
@@ -143,7 +147,6 @@ __all__ = [
     'negative_diff', 
     'sign_diff', 
     'abs_diff',
-
     'exp_diff', 
     'sqrt_diff', 
     'log_diff',

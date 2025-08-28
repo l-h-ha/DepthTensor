@@ -6,7 +6,7 @@ from ...typing import (
     TensorLike, 
     DTypeLike, 
     Order,
-    AxisShapeLike,
+    AxisLike,
     OperandLike,
     DeviceLike
 )
@@ -36,7 +36,7 @@ def zeros_like(
     dtype: Optional[DTypeLike] = None, 
     order: Order = 'K', 
     subok: bool = True,
-    shape: Optional[AxisShapeLike] = None
+    shape: Optional[AxisLike] = None
 ) -> TensorLike:
     from ...tensor import Tensor
     if isinstance(a, Tensor):
@@ -52,7 +52,6 @@ def zeros_like(
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         return Tensor(
-            #! As of the time writing this, CuPy does not support subok.
             cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape),
             device=device_op, requires_grad=requires_grad
         )
@@ -66,7 +65,7 @@ def ones_like(
     dtype: Optional[DTypeLike] = None, 
     order: Order = 'K', 
     subok: bool = True,
-    shape: Optional[AxisShapeLike] = None
+    shape: Optional[AxisLike] = None
 ) -> TensorLike:
     from ...tensor import Tensor
     if isinstance(a, Tensor):
@@ -82,7 +81,6 @@ def ones_like(
     else:
         if cp is None: raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         return Tensor(
-            #! As of the time writing this, CuPy does not support subok.
             cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape),
             device=device_op, requires_grad=requires_grad
         )
