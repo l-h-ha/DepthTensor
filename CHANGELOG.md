@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.1] - 2025-08-29
+
+### Fixed
+
+- Generator function produced by either ```create_2in_1out``` or ```create_1in_1out``` has their ```device``` arguments defaulting to ```"cpu"```, which introduces unwanted behaviors. The parameters now default to ```None```.
+
 ## [1.11.0] - 2025-08-28
 
 ### Fixed

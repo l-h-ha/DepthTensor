@@ -7,7 +7,8 @@ from typing import (
     TYPE_CHECKING,
     Protocol,
     Any,
-    Callable
+    Callable,
+    Optional
 )
 
 if TYPE_CHECKING:
@@ -46,7 +47,7 @@ class Func_2in_1out_Protocol(Protocol):
         x1: OperandLike,
         x2: OperandLike,
         *,
-        device: DeviceLike = "cpu",
+        device: Optional[DeviceLike] = None,
         requires_grad: bool = True,
         **kwds: Any
     ) -> TensorLike: ...
@@ -57,7 +58,7 @@ class Op_2in_1out_Protocol(Protocol):
         x1: NDArrayLike,
         x2: NDArrayLike,
         *,
-        device: DeviceLike = "cpu",
+        device: DeviceLike,
         **kwds: Any
     ) -> OperandLike: ...
 
@@ -74,7 +75,7 @@ class Func_1in_1out_Protocol(Protocol):
         self,
         x: OperandLike,
         *,
-        device: DeviceLike = "cpu",
+        device: Optional[DeviceLike] = None,
         requires_grad: bool = True,
         **kwds: Any
     ) -> TensorLike: ...
@@ -84,7 +85,7 @@ class Op_1in_1out_Protocol(Protocol):
         self,
         x: NDArrayLike,
         *,
-        device: DeviceLike = "cpu",
+        device: DeviceLike,
         **kwds: Any
     ) -> OperandLike: ...
 
