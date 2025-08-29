@@ -4,4 +4,4 @@ from ._core import random, create_2in_1out, create_1in_1out
 from ._core.exceptions import *
 from .autodiff import differentiate
 
-__version__ = "1.11.1"
+__version__ = "1.12.0"

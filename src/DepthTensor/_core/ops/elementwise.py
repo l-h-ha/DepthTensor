@@ -108,7 +108,7 @@ def create_2in_1out(
             return y
         else:
             if y.requires_grad:
-                dx1, dx2 = diff(y, a1, a2)
+                dx1, dx2 = diff(y, a1, a2, **kwds)
                 def backward() -> None:
                     if isinstance(x1, Tensor) and x1.requires_grad:
                         x1.grad += y.grad * dx1()
@@ -160,7 +160,7 @@ def create_1in_1out(
             return y
         else:
             if y.requires_grad:
-                dx = diff(y, a)
+                dx = diff(y, a, **kwds)
                 def backward() -> None:
                     if isinstance(x, Tensor) and x.requires_grad:
                         x.grad += y.grad * dx()

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2025-08-29
+
+### Added
+
+- Keywords arguments in diff functions used for ```create_2in_1out``` and ```create_1in_1out```, enabling further customization.
+
 ## [1.11.1] - 2025-08-29
 
 ### Fixed

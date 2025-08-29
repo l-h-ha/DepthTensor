@@ -67,7 +67,8 @@ class Diff_2in_1out_Protocol(Protocol):
         self,
         result: TensorLike,
         x1: NDArrayLike,
-        x2: NDArrayLike
+        x2: NDArrayLike,
+        **kwds: Any
     ) -> Tuple[Callable[[], NDArrayLike], Callable[[], NDArrayLike]]: ...
 
 class Func_1in_1out_Protocol(Protocol):
@@ -94,6 +95,7 @@ class Diff_1in_1out_Protocol(Protocol):
         self,
         result: TensorLike,
         x: NDArrayLike,
+        **kwds: Any
     ) -> Callable[[], NDArrayLike]: ...
 
 __all__ = [
