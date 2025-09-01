@@ -1,12 +1,7 @@
-from ..DepthTensor import Tensor
+from .. import DepthTensor as DTensor
 
 import numpy as np
 import cupy as cp
 
-x = cp.array(2)
-
-a = Tensor(x)
-a = Tensor(a)
-a *= 2
+a = DTensor.add(cp.array(1.0), np.array(2.0))
 print(a)
-print(a.data.dtype)

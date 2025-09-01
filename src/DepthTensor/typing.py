@@ -1,19 +1,19 @@
 from typing import (
-    TypeAlias, 
-    Union, 
-    Literal, 
+    TypeAlias,
+    Union,
+    Literal,
     Tuple,
     List,
     TYPE_CHECKING,
     Protocol,
     Any,
     Callable,
-    Optional
+    Optional,
 )
 
 if TYPE_CHECKING:
     from .tensor import Tensor
-TensorLike: TypeAlias = 'Tensor'
+TensorLike: TypeAlias = "Tensor"
 
 import numpy as np
 import numpy.typing as npt
@@ -22,8 +22,8 @@ DeviceLike: TypeAlias = Literal["cpu", "gpu"]
 ScalarLike: TypeAlias = Union[int, float, bool]
 ShapeLike: TypeAlias = Tuple[int, ...]
 AxisLike: TypeAlias = Union[int, ShapeLike]
-Order: TypeAlias = Literal['K', 'A', 'C', 'F']
-Casting: TypeAlias = Literal['no', 'equiv', 'safe', 'same_kind', 'unsafe']
+Order: TypeAlias = Literal["K", "A", "C", "F"]
+Casting: TypeAlias = Literal["no", "equiv", "safe", "same_kind", "unsafe"]
 
 DTypeLike: TypeAlias = npt.DTypeLike
 floating: TypeAlias = np.floating
@@ -39,9 +39,12 @@ double: TypeAlias = np.double
 
 NDArrayLike: TypeAlias = Union[npt.NDArray[np.number], Any]
 NDArrayLikeBool: TypeAlias = Union[npt.NDArray[np.bool_], Any]
-OperandLike: TypeAlias = Union[ScalarLike, NDArrayLike, NDArrayLikeBool, TensorLike, List, Tuple]
+OperandLike: TypeAlias = Union[
+    ScalarLike, NDArrayLike, NDArrayLikeBool, TensorLike, List, Tuple
+]
 
-class Func_2in_1out_Protocol(Protocol):
+
+class cfunc_2in_1out_pro(Protocol):
     def __call__(
         self,
         x1: OperandLike,
@@ -52,26 +55,20 @@ class Func_2in_1out_Protocol(Protocol):
         **kwds: Any
     ) -> TensorLike: ...
 
-class Op_2in_1out_Protocol(Protocol):
+
+class cop_2in_1out_pro(Protocol):
     def __call__(
-        self,
-        x1: NDArrayLike,
-        x2: NDArrayLike,
-        *,
-        device: DeviceLike,
-        **kwds: Any
+        self, x1: NDArrayLike, x2: NDArrayLike, *, device: DeviceLike, **kwds: Any
     ) -> OperandLike: ...
 
-class Diff_2in_1out_Protocol(Protocol):
+
+class cdiff_2in_1out_pro(Protocol):
     def __call__(
-        self,
-        result: TensorLike,
-        x1: NDArrayLike,
-        x2: NDArrayLike,
-        **kwds: Any
+        self, result: TensorLike, x1: NDArrayLike, x2: NDArrayLike, **kwds: Any
     ) -> Tuple[Callable[[], NDArrayLike], Callable[[], NDArrayLike]]: ...
 
-class Func_1in_1out_Protocol(Protocol):
+
+class cfunc_1in_1out_pro(Protocol):
     def __call__(
         self,
         x: OperandLike,
@@ -81,48 +78,44 @@ class Func_1in_1out_Protocol(Protocol):
         **kwds: Any
     ) -> TensorLike: ...
 
-class Op_1in_1out_Protocol(Protocol):
+
+class cop_1in_1out_pro(Protocol):
     def __call__(
-        self,
-        x: NDArrayLike,
-        *,
-        device: DeviceLike,
-        **kwds: Any
+        self, x: NDArrayLike, *, device: DeviceLike, **kwds: Any
     ) -> OperandLike: ...
 
-class Diff_1in_1out_Protocol(Protocol):
+
+class cdiff_1in_1out_pro(Protocol):
     def __call__(
-        self,
-        result: TensorLike,
-        x: NDArrayLike,
-        **kwds: Any
+        self, result: TensorLike, x: NDArrayLike, **kwds: Any
     ) -> Callable[[], NDArrayLike]: ...
 
+
 __all__ = [
-    'DTypeLike', 
-    'floating', 
-    'float16', 
-    'float32', 
-    'float64',
-    'integer', 
-    'int8', 
-    'int16', 
-    'int16', 
-    'int64',
-    'double',
-    'DeviceLike', 
-    'Order', 
-    'AxisLike', 
-    'ScalarLike', 
-    'NDArrayLike', 
-    'NDArrayLikeBool', 
-    'ShapeLike',
-    'TensorLike', 
-    'OperandLike',
-    'Op_2in_1out_Protocol',
-    'Diff_2in_1out_Protocol',
-    'Func_2in_1out_Protocol',
-    'Op_1in_1out_Protocol',
-    'Diff_1in_1out_Protocol',
-    'Func_1in_1out_Protocol'
-    ]
+    "DTypeLike",
+    "floating",
+    "float16",
+    "float32",
+    "float64",
+    "integer",
+    "int8",
+    "int16",
+    "int16",
+    "int64",
+    "double",
+    "DeviceLike",
+    "Order",
+    "AxisLike",
+    "ScalarLike",
+    "NDArrayLike",
+    "NDArrayLikeBool",
+    "ShapeLike",
+    "TensorLike",
+    "OperandLike",
+    "cop_2in_1out_pro",
+    "cdiff_2in_1out_pro",
+    "cfunc_2in_1out_pro",
+    "cop_1in_1out_pro",
+    "cdiff_1in_1out_pro",
+    "cfunc_1in_1out_pro",
+]

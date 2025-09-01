@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2025-09-1
+
+### Fixed
+
+- Some functions' parameters of which ```device```, in particular, defaults to ```"cpu"```, which causes unwanted behavior. It is now defaulted to ```None```.
+
+### Changed
+
+- Some functions such as ```Tensor.square()```, ```Tensor.add()```, etc. are now only accessible via the ```DepthTensor``` package. An example would be ```DepthTensor.square()```.
+
 ## [1.12.0] - 2025-08-29
 
 ### Added
