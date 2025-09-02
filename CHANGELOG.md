@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2025-09-2
+
+### Fixed
+
+- Fixed the way that devices are handled in built-in differentiable functions (```square()```, ```add()```, etc.).
+
 ## [2.0.0] - 2025-09-1
 
 ### Fixed

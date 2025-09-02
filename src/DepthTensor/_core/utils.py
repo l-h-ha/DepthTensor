@@ -185,6 +185,7 @@ def get_two_operand_op_device(
                     tuple,
                 ),  # * Universal datatypes regardless of devices
             ):
+                # * This leaves x2 to be either np.array or cp.array.
                 raise DeviceMismatch(
                     f"There is a incompatibility in datatypes between the two operands of types Tensor and {type(x2)}. Expected datatype of device: {x1.device} {"(CuPy arrays, GPU Tensors)" if x1.device == "gpu" else "(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)"}, got datatype of type: {type(x2)}."
                 )
@@ -199,6 +200,7 @@ def get_two_operand_op_device(
                     tuple,
                 ),  # * Universal datatypes regardless of devices
             ):
+                # * This leaves x1 to be either np.array or cp.array.
                 raise DeviceMismatch(
                     f"There is a incompatibility in datatypes between the two operands of types {type(x1)} and Tensor. Expected datatype of device: {x2.device} {"(CuPy arrays, GPU Tensors)" if x2.device == "gpu" else "(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)"}, got datatype of type: {type(x1)}."
                 )
