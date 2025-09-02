@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.2] - 2025-09-2
+
+### Fixed
+
+- Fixed the way tensor instantiation handles device. Prior to this change, putting a ```cupy.ndarray``` into the non-positional argument, while leaving the ```device``` argument blank, results in a tensor of which the ```grad``` attribute is a ```numpy.ndarray``` instead of ```cupy.ndarray``` as expected.
+
 ## [2.0.1] - 2025-09-2
 
 ### Fixed

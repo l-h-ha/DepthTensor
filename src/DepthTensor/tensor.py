@@ -14,7 +14,6 @@ from .typing import (
 )
 
 from ._core import (
-    xp_array_to_device,
     CuPyNotFound,
     CUPY_NOT_FOUND_MSG,
     # * elementwise
@@ -47,6 +46,8 @@ from ._core import (
     maximum,
     sum,
 )
+
+from ._core.utils import get_device, to_xp_array, xp_array_to_device
 
 import numpy as np
 
@@ -84,6 +85,8 @@ def _wrapper_1in_1out(
     return y
 
 
+allowed_dtype_kind = "uifb"
+
 ###
 ###
 ###
@@ -100,7 +103,7 @@ class Tensor:
         /,
         *,
         dtype: Optional[DTypeLike] = None,
-        device: DeviceLike = "cpu",
+        device: Optional[DeviceLike] = None,
         prev: Tuple = (),
         requires_grad: bool = False,
         copy: bool = True,
@@ -109,80 +112,30 @@ class Tensor:
         ndmin: int = 0,
         blocking: bool = False,
     ) -> None:
-        # * Convert to xp.ndarray
+        if device is None:
+            self.device = get_device(obj)
+        else:
+            self.device = device
+
         if isinstance(obj, np.ndarray):
-            if obj.dtype.kind in "uifb":
-                self.data = xp_array_to_device(obj, device)
-                self.device = "cpu"
+            if obj.dtype.kind in allowed_dtype_kind:
+                self.data = xp_array_to_device(obj, self.device)
             else:
                 raise TypeError("Expected a numerical NumPy array.")
         else:
             if cp is not None and isinstance(obj, cp.ndarray):
-                if obj.dtype.kind in "uifb":  # type: ignore
-                    self.data = xp_array_to_device(obj, device)
-                    self.device = "gpu"
+                if obj.dtype.kind in allowed_dtype_kind:  # type: ignore
+                    self.data = xp_array_to_device(obj, self.device)
                 else:
                     raise TypeError("Expected a numerical CuPy array.")
+            elif isinstance(obj, Tensor):
+                self.data = xp_array_to_device(obj.data, self.device)
             else:
-                if device == "gpu":
-                    if cp is None:
-                        raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-                    if isinstance(
-                        obj,
-                        (int, float, List, Tuple, cp.floating, cp.integer, cp.bool_),
-                    ):
-                        self.data = cp.array(
-                            obj,
-                            dtype=dtype,
-                            copy=copy,
-                            order=order,
-                            subok=subok,
-                            ndmin=ndmin,
-                            blocking=blocking,
-                        )
-                        self.device = "gpu"
-                    elif isinstance(obj, Tensor):
-                        self.data = cp.array(
-                            obj.data,
-                            dtype=dtype,
-                            copy=copy,
-                            order=order,
-                            subok=subok,
-                            ndmin=ndmin,
-                            blocking=blocking,
-                        )
-                        self.device = "gpu"
-                    else:
-                        raise RuntimeError(
-                            "Expected data of type: int, float, list, tuple, numpy.ndarray, cupy.ndarray."
-                        )
-                else:
-                    if isinstance(
-                        obj, (int, float, List, Tuple, np.integer, np.floating, np.bool)
-                    ):
-                        self.data = np.array(
-                            obj,
-                            dtype=dtype,
-                            copy=copy,
-                            order=order,
-                            subok=subok,
-                            ndmin=ndmin,
-                        )
-                        self.device = "cpu"
-                    elif isinstance(obj, Tensor):
-                        self.data = np.array(
-                            obj.data,
-                            dtype=dtype,
-                            copy=copy,
-                            order=order,
-                            subok=subok,
-                            ndmin=ndmin,
-                        )
-                        self.device = "cpu"
-                    else:
-                        raise RuntimeError(
-                            "Expected data of type: int, float, list, tuple, numpy.ndarray, cupy.ndarray."
-                        )
+                self.data = xp_array_to_device(
+                    to_xp_array(obj, self.device), self.device
+                )
+
+        # TODO: Use all the parameters.
 
         # * Convert to dtype (if provided)
         if dtype is not None and dtype != self.data.dtype:
@@ -190,7 +143,7 @@ class Tensor:
         self.prev = prev
         self.requires_grad = requires_grad
 
-        if device == "cpu":
+        if self.device == "cpu":
             self.grad = np.zeros_like(self.data)
         else:
             if cp is None:
