@@ -39,7 +39,6 @@ def zeros_like(
     if device_op == "cpu":
         return Tensor(
             np.zeros_like(a, dtype=dtype, order=order, subok=subok, shape=shape),
-            device=device_op,
             requires_grad=requires_grad,
         )
     else:
@@ -47,7 +46,6 @@ def zeros_like(
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         return Tensor(
             cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape),
-            device=device_op,
             requires_grad=requires_grad,
         )
 
@@ -73,7 +71,6 @@ def ones_like(
     if device_op == "cpu":
         return Tensor(
             np.ones_like(a, dtype=dtype, order=order, subok=subok, shape=shape),
-            device=device_op,
             requires_grad=requires_grad,
         )
     else:
@@ -81,7 +78,6 @@ def ones_like(
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         return Tensor(
             cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape),
-            device=device_op,
             requires_grad=requires_grad,
         )
 

@@ -93,9 +93,10 @@ allowed_dtype_kind = "uifb"
 
 
 class Tensor:
-    device: DeviceLike
-    backward: Optional[Callable[[], None]]
     data: NDArrayLike
+    device: DeviceLike
+    grad: Optional[NDArrayLike]
+    backward: Optional[Callable[[], None]]
 
     def __init__(
         self,
@@ -142,14 +143,18 @@ class Tensor:
             self.data = self.data.astype(dtype)
         self.prev = prev
         self.requires_grad = requires_grad
+        self.backward = None
+        self.grad = None
 
+    def zeros_grad(self) -> NDArrayLike:
         if self.device == "cpu":
-            self.grad = np.zeros_like(self.data)
+            grad = np.zeros_like(self.data)
         else:
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-            self.grad = cp.zeros_like(self.data)
-        self.backward = None
+            grad = cp.zeros_like(self.data)
+        self.grad = grad
+        return grad
 
     ###
     ###

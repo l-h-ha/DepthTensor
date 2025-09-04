@@ -70,7 +70,6 @@ def create_2in_1out(
         from ...tensor import Tensor
 
         op_device = get_two_operand_op_device(x1, x2, device)
-
         a1, a2 = to_xp_array(x1, device=op_device), to_xp_array(x2, device=op_device)
         y = op(a1, a2, device=op_device, **kwds)
 
@@ -91,7 +90,6 @@ def create_2in_1out(
         else:
             y = Tensor(
                 y,
-                device=op_device,
                 prev=prev,
                 requires_grad=y_requires_grad and requires_grad,
             )
@@ -99,13 +97,19 @@ def create_2in_1out(
             return y
         else:
             if y.requires_grad:
+                if y.grad is None:
+                    y.zeros_grad()
                 dx1, dx2 = diff(y, a1, a2, **kwds)
 
                 def backward() -> None:
                     if isinstance(x1, Tensor) and x1.requires_grad:
-                        x1.grad += y.grad * dx1()
+                        if x1.grad is None:
+                            x1.zeros_grad()
+                        x1.grad += y.grad * dx1()  # type: ignore
                     if isinstance(x2, Tensor) and x2.requires_grad:
-                        x2.grad += y.grad * dx2()
+                        if x2.grad is None:
+                            x2.zeros_grad()
+                        x2.grad += y.grad * dx2()  # type: ignore
 
                 y.backward = backward
             return y
@@ -126,13 +130,10 @@ def create_1in_1out(
     ) -> TensorLike:
         from ...tensor import Tensor
 
-        if isinstance(x, Tensor):
-            device_op = x.device
+        if device is None:
+            device_op = get_device(x)
         else:
-            if device is None:
-                device_op = get_device(x)
-            else:
-                device_op = device
+            device_op = device
 
         a = to_xp_array(x, device=device_op)
         y = op(a, device=device_op, **kwds)
@@ -152,7 +153,6 @@ def create_1in_1out(
         else:
             y = Tensor(
                 y,
-                device=device_op,
                 prev=(x,),
                 requires_grad=y_requires_grad and requires_grad,
             )
@@ -160,11 +160,15 @@ def create_1in_1out(
             return y
         else:
             if y.requires_grad:
+                if y.grad is None:
+                    y.zeros_grad()
                 dx = diff(y, a, **kwds)
 
                 def backward() -> None:
                     if isinstance(x, Tensor) and x.requires_grad:
-                        x.grad += y.grad * dx()
+                        if x.grad is None:
+                            x.zeros_grad()
+                        x.grad += y.grad * dx()  # type: ignore
 
                 y.backward = backward
             return y
@@ -195,27 +199,20 @@ def wrapper_2in_1out(
     from ...tensor import Tensor
 
     op_device = get_two_operand_op_device(x1, x2, device)
-
-    if device is not None:
-        op_device = device
     a1, a2 = to_xp_array(x1, op_device), to_xp_array(x2, op_device)
 
     if op_device == "cpu":
+        kwds = {
+            "out": out,
+            "dtype": dtype,
+            "where": where,
+            "casting": casting,
+            "order": order,
+            "subok": subok,
+        }
         if func_name == "matmul":
-            y = getattr(np, func_name)(
-                a1, a2, out=out, dtype=dtype, casting=casting, order=order, subok=subok
-            )
-        else:
-            y = getattr(np, func_name)(
-                a1,
-                a2,
-                out=out,
-                dtype=dtype,
-                where=where,
-                casting=casting,
-                order=order,
-                subok=subok,
-            )
+            del kwds["where"]
+        y = getattr(np, func_name)(a1, a2, **kwds)
     else:
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
@@ -226,7 +223,7 @@ def wrapper_2in_1out(
         return x1
 
     requires_grad, prev = get_requires_grad_and_prev(x1, x2)
-    return Tensor(y, device=op_device, prev=prev, requires_grad=requires_grad)
+    return Tensor(y, prev=prev, requires_grad=requires_grad)
 
 
 def wrapper_1in_1out(
@@ -245,13 +242,10 @@ def wrapper_1in_1out(
 ) -> TensorLike:
     from ...tensor import Tensor
 
-    if isinstance(x, Tensor):
-        device_op = x.device
+    if device is None:
+        device_op = get_device(device)
     else:
-        if device is None:
-            device_op = get_device(device)
-        else:
-            device_op = device
+        device_op = device
 
     a = to_xp_array(x, device=device_op)
     if device_op == "cpu":
@@ -275,7 +269,7 @@ def wrapper_1in_1out(
             x.data = y
             return x
         requires_grad = x.requires_grad
-    return Tensor(y, device=device_op, prev=(x,), requires_grad=requires_grad)
+    return Tensor(y, prev=(x,), requires_grad=requires_grad)
 
 
 ###

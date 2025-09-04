@@ -66,7 +66,7 @@ def sum(
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.sum(arr, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
-    return Tensor(y, device=device_op, requires_grad=requires_grad)
+    return Tensor(y, requires_grad=requires_grad)
 
 
 def max(
@@ -97,7 +97,7 @@ def max(
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.max(arr, axis=axis, out=out, keepdims=keepdims)
-    return Tensor(y, device=device_op, requires_grad=requires_grad)
+    return Tensor(y, requires_grad=requires_grad)
 
 
 def maximum(
@@ -133,8 +133,10 @@ def maximum(
             subok=subok,
         )
     else:
-        y = np.maximum(_x1, _x2, out=out, dtype=dtype, casting=casting)
-    return Tensor(y, device=device_op, requires_grad=requires_grad)
+        if cp is None:
+            raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = cp.maximum(_x1, _x2, out=out, dtype=dtype, casting=casting)
+    return Tensor(y, requires_grad=requires_grad)
 
 
 ###

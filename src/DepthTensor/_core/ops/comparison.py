@@ -75,12 +75,7 @@ def where(
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
             result = cp.where(data)
-        return tuple(
-            [
-                Tensor(array, device=device, requires_grad=requires_grad)
-                for array in result
-            ]
-        )
+        return tuple([Tensor(array, requires_grad=requires_grad) for array in result])
     # * Two parameters overload
     elif x is not None and y is not None:
         if (
@@ -99,7 +94,7 @@ def where(
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
             result = cp.where(data, x_data, y_data)
-        return Tensor(result, device=device, requires_grad=requires_grad)
+        return Tensor(result, requires_grad=requires_grad)
     else:
         raise ValueError("Both x and y parameters must be given.")
 
@@ -143,7 +138,7 @@ def wrapper_2in_1out(
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = getattr(cp, func_name)(x1, x2, out=out, dtype=dtype, casting=casting)
-    return Tensor(y, device=op_device)
+    return Tensor(y)
 
 
 def equal(

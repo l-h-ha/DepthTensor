@@ -6,12 +6,14 @@ from ...typing import DTypeLike, TensorLike, AxisLike, int64, DeviceLike
 
 from ..exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG
 
-from ..utils import get_device
+import numpy as np
 
 try:
     import cupy as cp
 except (ImportError, ModuleNotFoundError):
     cp = None
+
+_RNG = np.random.default_rng()
 
 ###
 ###
@@ -36,12 +38,19 @@ def rand(
     from ...tensor import Tensor
 
     if device == "cpu":
-        y = random.rand(*d)
+        if dtype is None:
+            y = _RNG.random(size=d)
+        elif dtype is np.float32 or dtype is np.float64:
+            y = _RNG.random(size=d, dtype=dtype)
+        else:
+            raise RuntimeError(
+                "The 'dtype' argument must be a type either a float64 or a float32."
+            )
     else:
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.random.rand(*d, dtype=dtype)
-    return Tensor(y, dtype=dtype, requires_grad=requires_grad)
+    return Tensor(y, requires_grad=requires_grad)
 
 
 @overload
@@ -62,12 +71,19 @@ def randn(
     from ...tensor import Tensor
 
     if device == "cpu":
-        y = random.randn(*d)
+        if dtype is None:
+            y = _RNG.standard_normal(d)
+        elif dtype is np.float32 or dtype is np.float64:
+            y = _RNG.standard_normal(d, dtype=dtype)
+        else:
+            raise RuntimeError(
+                "The 'dtype' argument must be a type either a float64 or a float32."
+            )
     else:
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.random.randn(*d, dtype=dtype)
-    return Tensor(y, dtype=dtype, requires_grad=requires_grad)
+    return Tensor(y, requires_grad=requires_grad)
 
 
 def randint(

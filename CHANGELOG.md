@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2025-09-4
+
+### Added
+
+- Gradient optimization where it is only initialized when the tensor unit is about to perform differentiation.
+
+### Changed
+
+- Different implementations for ```DTensor.random.rand()``` and ```DTensor.random.randn()``` which boost performance.
+
+### Fixed
+
+- Minor fix in code of several functions that boosts performance as type casting relies less on ```arr.astype()```. 
+
 ## [2.0.2] - 2025-09-2
 
 ### Fixed

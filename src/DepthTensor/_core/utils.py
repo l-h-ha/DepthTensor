@@ -164,10 +164,10 @@ def get_complement_device(device: DeviceLike) -> DeviceLike:
 def get_two_operand_op_device(
     x1: OperandLike, x2: OperandLike, device: Optional[DeviceLike]
 ) -> DeviceLike:
-    from ..tensor import Tensor
-
     if device is not None:
         return device
+
+    from ..tensor import Tensor
 
     if isinstance(x1, Tensor) and isinstance(x2, Tensor):
         if x1.device != x2.device:
