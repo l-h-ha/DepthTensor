@@ -92,6 +92,12 @@ allowed_dtype_kind = "uifb"
 ###
 
 
+def is_list_of_type(list_obj, type_obj) -> bool:
+    if not isinstance(list_obj, list):
+        return False
+    return all(isinstance(x, type_obj) for x in list_obj)
+
+
 class Tensor:
     data: NDArrayLike
     device: DeviceLike
@@ -100,7 +106,7 @@ class Tensor:
 
     def __init__(
         self,
-        obj: OperandLike,
+        obj: Union[OperandLike, List[NDArrayLike]],
         /,
         *,
         dtype: Optional[DTypeLike] = None,
@@ -131,6 +137,8 @@ class Tensor:
                     raise TypeError("Expected a numerical CuPy array.")
             elif isinstance(obj, Tensor):
                 self.data = xp_array_to_device(obj.data, self.device)
+            elif is_list_of_type(obj, Tensor):
+                self.data = [xp_array_to_device(t) for t in obj]  # type: ignore
             else:
                 self.data = xp_array_to_device(
                     to_xp_array(obj, self.device), self.device
