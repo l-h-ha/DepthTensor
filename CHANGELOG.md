@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2025-11-26
+
+### Fixed
+
+- A bug where it is possible to perform in-place operations on differentiable tensors in computational graphs, which can lead to unexpected behaviors related to gradients. Now in-place operations ```iadd```, ```isub```, etc., and notably ```setitem``` would raise a `RunTimeError` exception on differentiable tensors.
+
 ## [2.2.0] - 2025-10-5
 
 ### Added

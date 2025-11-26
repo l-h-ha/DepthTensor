@@ -235,6 +235,11 @@ class Tensor:
             return self.copy()
         else:
             if in_place:
+                if self.requires_grad:
+                    raise RuntimeError(
+                        "In-place operations (device switch) are forbidden on differentiable tensors."
+                    )
+
                 self.device = device
                 self.prev = () if clear_prev else self.prev
                 self.data = xp_array_to_device(self.data, device=device)
@@ -400,6 +405,10 @@ class Tensor:
         )
 
     def __iadd__(self, t: OperandLike) -> Tensor:
+        if self.requires_grad:
+            raise RuntimeError(
+                "In-place operations are forbidden on differentiable tensors."
+            )
         return add(self, t, in_place=True)
 
     def __sub__(self, t: OperandLike) -> Tensor:
@@ -413,6 +422,10 @@ class Tensor:
         )
 
     def __isub__(self, t: OperandLike) -> Tensor:
+        if self.requires_grad:
+            raise RuntimeError(
+                "In-place operations are forbidden on differentiable tensors."
+            )
         return subtract(self, t, in_place=True)
 
     def __mul__(self, t: OperandLike) -> Tensor:
@@ -426,6 +439,10 @@ class Tensor:
         )
 
     def __imul__(self, t: OperandLike) -> Tensor:
+        if self.requires_grad:
+            raise RuntimeError(
+                "In-place operations are forbidden on differentiable tensors."
+            )
         return multiply(self, t, in_place=True)
 
     def __matmul__(self, t: OperandLike) -> Tensor:
@@ -439,6 +456,10 @@ class Tensor:
         )
 
     def __imatmul__(self, t: OperandLike) -> Tensor:
+        if self.requires_grad:
+            raise RuntimeError(
+                "In-place operations are forbidden on differentiable tensors."
+            )
         return matmul(self, t, in_place=True)
 
     def __truediv__(self, t: OperandLike) -> Tensor:
@@ -452,6 +473,10 @@ class Tensor:
         )
 
     def __itruediv__(self, t: OperandLike) -> Tensor:
+        if self.requires_grad:
+            raise RuntimeError(
+                "In-place operations are forbidden on differentiable tensors."
+            )
         return divide(self, t, in_place=True)
 
     def __pow__(self, t: OperandLike) -> Tensor:
@@ -460,6 +485,10 @@ class Tensor:
         )
 
     def __ipow__(self, t: OperandLike) -> Tensor:
+        if self.requires_grad:
+            raise RuntimeError(
+                "In-place operations are forbidden on differentiable tensors."
+            )
         return power(self, t, in_place=True)
 
     ###
@@ -495,6 +524,10 @@ class Tensor:
         return self.data[index]
 
     def __setitem__(self, index, value) -> Any:
+        if self.requires_grad:
+            raise RuntimeError(
+                "In-place operations (indexing) are forbidden on differentiable tensors."
+            )
         self.data[index] = value
 
     def __iter__(self) -> Iterator:
