@@ -5,6 +5,7 @@ from ...typing import (
     DTypeLike,
     Casting,
     Order,
+    AxisLike,
     NDArrayLikeBool,
     NDArrayLike,
     OperandLike,
@@ -243,7 +244,7 @@ def wrapper_1in_1out(
     from ...tensor import Tensor
 
     if device is None:
-        device_op = get_device(device)
+        device_op = get_device(x)
     else:
         device_op = device
 
@@ -715,6 +716,54 @@ def square(
 ###
 ###
 
+
+def mean(
+    x: OperandLike,
+    /,
+    axis: Optional[AxisLike] = None,
+    dtype: Optional[DTypeLike] = None,
+    out: Optional[NDArrayLike] = None,
+    keepdims: bool = False,
+    *,
+    device: Optional[DeviceLike] = None,
+    in_place: bool = False,
+    where: Union[bool, NDArrayLikeBool] = True,
+) -> TensorLike:
+    from ...tensor import Tensor
+
+    if device is None:
+        device_op = get_device(x)
+    else:
+        device_op = device
+
+    a = to_xp_array(x, device=device_op)
+    if device_op == "cpu":
+        y = np.mean(
+            a,
+            out=out,
+            dtype=dtype,
+            where=where,
+            axis=axis,
+            keepdims=keepdims,
+        )
+    else:
+        if cp is None:
+            raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        y = cp.mean(a, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
+
+    requires_grad = False
+    if isinstance(x, Tensor):
+        if in_place:
+            x.data = y
+            return x
+        requires_grad = x.requires_grad
+    return Tensor(y, prev=(x,), requires_grad=requires_grad)
+
+
+###
+###
+###
+
 __all__ = [
     "add",
     "subtract",
@@ -729,6 +778,7 @@ __all__ = [
     "sqrt",
     "log",
     "square",
+    "mean",
     "clip",
     "create_2in_1out",
     "create_1in_1out",

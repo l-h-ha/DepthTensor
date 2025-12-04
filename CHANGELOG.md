@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2025-12-04
+
+### Added
+
+- Added a method ```mean()```, which outputs differentiable tensors, in the ```Tensor``` class.
+
+### Fixed
+
+-  A bug where differentiating tensors that resulted from 1-input-1-output operations, e.g. $y = f(x)$, bugs out due to an oversight in device management.
+
 ## [2.2.1] - 2025-11-26
 
 ### Fixed

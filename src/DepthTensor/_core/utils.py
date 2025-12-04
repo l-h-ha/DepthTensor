@@ -151,7 +151,7 @@ def get_device(a: OperandLike) -> DeviceLike:
     elif isinstance(a, (int, float, list, tuple, bool)):
         return "cpu"
     else:
-        raise RuntimeError("Invalid argument type.")
+        raise RuntimeError(f"Invalid argument type: {type(a)}")
 
 
 def get_complement_device(device: DeviceLike) -> DeviceLike:

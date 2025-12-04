@@ -26,6 +26,7 @@ from ._core import (
     power,
     clip,
     abs,
+    mean,
     # * diff (elementwise)
     add_diff,
     subtract_diff,
@@ -34,6 +35,7 @@ from ._core import (
     divide_diff,
     power_diff,
     abs_diff,
+    mean_diff,
     # * comparison
     equal,
     not_equal,
@@ -76,12 +78,13 @@ def _wrapper_2in_1out(
 
 def _wrapper_1in_1out(
     y: Tensor,
-    diff_func: Callable[[Tensor, OperandLike], Tensor],
+    diff_func: Callable,
     x: OperandLike,
     record_op: bool = True,
+    **kwargs: Any,
 ):
     if record_op:
-        return diff_func(y, x)
+        return diff_func(y, x, **kwargs)
     return y
 
 
@@ -311,6 +314,35 @@ class Tensor:
             subok=subok,
         )
 
+    def mean(
+        self,
+        /,
+        axis: Optional[AxisLike] = None,
+        dtype: Optional[DTypeLike] = None,
+        out: Optional[NDArrayLike] = None,
+        keepdims: bool = False,
+        *,
+        device: Optional[DeviceLike] = None,
+        in_place: bool = False,
+        where: Union[bool, NDArrayLikeBool] = True,
+    ) -> Tensor:
+        return _wrapper_1in_1out(
+            mean(
+                self,
+                axis=axis,
+                dtype=dtype,
+                out=out,
+                keepdims=keepdims,
+                device=device,
+                in_place=in_place,
+                where=where,
+            ),
+            mean_diff,
+            self,
+            axis=axis,
+            keepdims=keepdims,
+        )
+
     ###
     ### Reduction
     ###
@@ -407,7 +439,7 @@ class Tensor:
     def __iadd__(self, t: OperandLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
-                "In-place operations are forbidden on differentiable tensors."
+                "In-place operations are (add) forbidden on differentiable tensors."
             )
         return add(self, t, in_place=True)
 
@@ -424,7 +456,7 @@ class Tensor:
     def __isub__(self, t: OperandLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
-                "In-place operations are forbidden on differentiable tensors."
+                "In-place operations (sub) are forbidden on differentiable tensors."
             )
         return subtract(self, t, in_place=True)
 
@@ -441,7 +473,7 @@ class Tensor:
     def __imul__(self, t: OperandLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
-                "In-place operations are forbidden on differentiable tensors."
+                "In-place operations are (mul) forbidden on differentiable tensors."
             )
         return multiply(self, t, in_place=True)
 
@@ -458,7 +490,7 @@ class Tensor:
     def __imatmul__(self, t: OperandLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
-                "In-place operations are forbidden on differentiable tensors."
+                "In-place operations are (matmul) forbidden on differentiable tensors."
             )
         return matmul(self, t, in_place=True)
 
@@ -475,7 +507,7 @@ class Tensor:
     def __itruediv__(self, t: OperandLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
-                "In-place operations are forbidden on differentiable tensors."
+                "In-place operations (div) are forbidden on differentiable tensors."
             )
         return divide(self, t, in_place=True)
 
@@ -487,7 +519,7 @@ class Tensor:
     def __ipow__(self, t: OperandLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
-                "In-place operations are forbidden on differentiable tensors."
+                "In-place operations (pow) are forbidden on differentiable tensors."
             )
         return power(self, t, in_place=True)
 
