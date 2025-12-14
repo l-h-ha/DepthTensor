@@ -13,8 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Renamed ```TensorLike, DeviceLike, ScalarLike, ShapeLike, AxisLike, NDArrayLike, NDArrayLikeBool, OperandLike, cfunc_2in_1out_pro, cop_2in_1out_pro, cdiff_2in_1out_pro, cfunc_1in_1out_pro, cop_1in_1out_pro, cdiff_1in_1out_pro``` to ```TensorType, Device, Scalar, Shape, Axis, TensorData, TensorDataBool, TensorLike, BinaryFunc, BinaryOp, BinaryDiff, UnaryFunc, UnaryOp, UnaryDiff```, respectively, for easier typehinting.
 
-
-
 ## [2.4.0] - 2025-12-14
 
 ### Added
