@@ -1,6 +1,6 @@
 # DepthTensor: A Hardware-Accelerated Tensor Computation and Autograd Engine
 
-**DepthTensor** is a light-weight, high-performance library for reverse-mode automatic differentiation (AD). It is useful in building the mathematical foundation of deep learning frameworks, with the use of a `Tensor` object which dynamically builds computational graphs and computes gradients using **Vector-Jacobian Products (VJP)**, generalized for tensors of abritrary rank.
+**DepthTensor** is a light-weight, high-performance library for reverse-mode automatic differentiation (AD). It is useful in building the mathematical foundation of deep learning frameworks, with the use of a `Tensor` object which dynamically builds computational graphs and computes gradients using **Vector-Jacobian Products (VJP)**, generalized for tensors of arbitrary rank.
 
 > **Note**: This is the core autograd and tensor computation engine. For the full deep learning framework, refer to [DepthML](https://github.com/l-h-ha/DepthML).
 
@@ -69,13 +69,13 @@ a, b = dt.Tensor([1], device="gpu"), dt.Tensor(
     [100], device="gpu"
 )
 
-# 2. Optimization Loop
+# Optimization Loop
 lr = 0.001
 for i in range(500):
     # Rosenbrock: f(x,y) = (a-x)^2 + b(y-x^2)^2
     loss = (a - x) ** 2 + b * (y - x**2) ** 2
 
-    # Backpward pass
+    # Backward pass
     dt.differentiate(loss)
 
     # Gradient Descent
