@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.2] - 2025-12-14
+
+### Fixed
+
+- Fixed a potentially unwanted and unexpected behavior in gradient update of custom operation functions, where the previous default update behavior was accumulating the Hadamard product of the resulting node with the local derivatives (the domain of manual definition beyond which is unsupported) of the preceding nodes. Essentially: 
+
+$$
+\bar{x} := \bar{y} \odot f(y, x)
+$$
+
+- where $f(y, x)$ is manually defined by users.
+
 ## [2.4.1] - 2025-12-14
 
 ### Changed

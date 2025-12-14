@@ -111,11 +111,11 @@ def create_2in_1out(op: BinaryOp, diff: BinaryDiff | None) -> BinaryFunc:
                     if isinstance(x1, Tensor) and x1.requires_grad:
                         if x1.grad is None:
                             x1.zeros_grad()
-                        x1.grad += y.grad * dx1()  # type: ignore (y.grad cannot be None)
+                        x1.grad += dx1()  # type: ignore (y.grad cannot be None)
                     if isinstance(x2, Tensor) and x2.requires_grad:
                         if x2.grad is None:
                             x2.zeros_grad()
-                        x2.grad += y.grad * dx2()  # type: ignore (y.grad cannot be None)
+                        x2.grad += dx2()  # type: ignore (y.grad cannot be None)
 
                 y.backward = backward
             return y
@@ -177,7 +177,7 @@ def create_1in_1out(op: UnaryOp, diff: UnaryDiff | None) -> UnaryFunc:
                     if isinstance(x, Tensor) and x.requires_grad:
                         if x.grad is None:
                             x.zeros_grad()
-                        x.grad += y.grad * dx()  # type: ignore (y.grad cannot be None)
+                        x.grad += dx()  # type: ignore (y.grad cannot be None)
 
                 y.backward = backward
             return y
