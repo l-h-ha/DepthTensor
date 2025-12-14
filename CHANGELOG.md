@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2025-12-14
+
+### Added
+
+- A method ```item()``` that returns the item of the ```numpy``` or ```cupy``` data.
+
+- ```differentiate()``` function now accepts ```grad``` argument which allows manually setting the gradient stream source.
+
+## [2.3.1] - 2025-12-10
+
+### Fixed
+
+- A critical bug related to autograd which raises a ```GradientComputationError``` exception when encountering a tensor that is not differentiable. This means that unrelated data such as datasets, X, had to be differentiable.
+
+### Added
+
+- The differentiate function now accepts
+
 ## [2.3.0] - 2025-12-04
 
 ### Added

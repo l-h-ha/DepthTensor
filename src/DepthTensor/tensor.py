@@ -279,7 +279,11 @@ class Tensor:
 
     @property
     def size(self) -> int:
+        self.item
         return self.data.size
+
+    def item(self, **kwargs: Any) -> Any:
+        return self.data.item(**kwargs)
 
     ###
     ### Element-wise
