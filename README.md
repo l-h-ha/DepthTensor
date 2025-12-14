@@ -42,7 +42,7 @@ All gradients are aggregated from all gradient downstreams.
 
 ## 2. Architecture and System Design
 
-### 2.1. The differentiable Primitive (`Tensor`)
+### 2.1. The Differentiable Primitive (`Tensor`)
 
 The `Tensor` class acts like a node in the Directed Acyclic Graph (DAG).
 

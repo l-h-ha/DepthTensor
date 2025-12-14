@@ -1,15 +1,15 @@
-from typing import Optional, Union, Any
+from typing import Any
 
 from ...typing import (
-    TensorLike,
-    NDArrayLike,
-    NDArrayLikeBool,
+    TensorType,
+    TensorData,
+    TensorDataBool,
     Casting,
     Order,
     DTypeLike,
-    AxisLike,
-    OperandLike,
-    DeviceLike,
+    Axis,
+    TensorLike,
+    Device,
 )
 
 from ..exceptions import (
@@ -19,7 +19,7 @@ from ..exceptions import (
     DEVICE_MISMATCH_MSG,
 )
 
-from ..utils import to_xp_array, get_device, get_two_operand_op_device
+from ..utils import to_tensordata, get_device, get_two_operand_op_device
 
 import numpy as np
 
@@ -35,18 +35,18 @@ _NoValue = object()
 
 
 def sum(
-    a: OperandLike,
+    a: TensorLike,
     /,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     requires_grad: bool = False,
-    axis: Optional[AxisLike] = None,
-    dtype: Optional[DTypeLike] = None,
-    out: Optional[Union[np.ndarray, Any]] = None,
+    axis: Axis | None = None,
+    dtype: DTypeLike | None = None,
+    out: TensorData | None = None,
     keepdims: bool = True,
     initial: Any = _NoValue,
-    where: Union[bool, NDArrayLikeBool] = True,
-) -> TensorLike:
+    where: TensorDataBool | bool = True,
+) -> TensorType:
     from ...tensor import Tensor
 
     if device is None:
@@ -54,7 +54,7 @@ def sum(
     else:
         device_op = device
 
-    arr = to_xp_array(a, device=device_op)
+    arr = to_tensordata(a, device=device_op)
     if device_op == "cpu":
         kwds = {"axis": axis, "dtype": dtype, "keepdims": keepdims, "where": where}
         if not isinstance(initial, type(_NoValue)):
@@ -70,17 +70,17 @@ def sum(
 
 
 def max(
-    a: OperandLike,
+    a: TensorLike,
     /,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     requires_grad: bool = False,
-    axis: Optional[AxisLike] = None,
-    out: Optional[Union[np.ndarray, Any]] = None,
+    axis: Axis | None = None,
+    out: TensorData | None = None,
     keepdims: bool = False,
     initial: Any = _NoValue,
-    where: Union[bool, NDArrayLikeBool] = True,
-) -> TensorLike:
+    where: TensorDataBool | bool = True,
+) -> TensorType:
     from ...tensor import Tensor
 
     if device is None:
@@ -88,7 +88,7 @@ def max(
     else:
         device_op = device
 
-    arr = to_xp_array(a, device=device_op)
+    arr = to_tensordata(a, device=device_op)
     if device_op == "cpu":
         y = np.max(
             arr, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where
@@ -101,25 +101,25 @@ def max(
 
 
 def maximum(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[np.ndarray] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     requires_grad: bool = False,
-    where: Union[bool, NDArrayLikeBool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     from ...tensor import Tensor
 
     device_op = get_two_operand_op_device(x1, x2, device=device)
 
-    _x1: NDArrayLike = to_xp_array(x1, device=device_op)
-    _x2: NDArrayLike = to_xp_array(x2, device=device_op)
+    _x1: TensorData = to_tensordata(x1, device=device_op)
+    _x2: TensorData = to_tensordata(x2, device=device_op)
 
     if device_op == "cpu":
         y = np.maximum(

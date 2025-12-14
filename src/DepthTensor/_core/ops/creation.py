@@ -1,19 +1,17 @@
-from typing import Optional, Literal, Union
+from typing import Literal
 
 from ...typing import (
+    TensorType,
     TensorLike,
     DTypeLike,
     Order,
-    AxisLike,
-    OperandLike,
-    DeviceLike,
-    ShapeLike,
-    NDArrayLike,
+    Axis,
+    Device,
+    Shape,
 )
 
 from ..exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG
-
-from ..utils import to_xp_array, get_device
+from ..utils import to_tensordata, get_device
 
 import numpy as np
 
@@ -28,23 +26,23 @@ except (ImportError, ModuleNotFoundError):
 
 
 def zeros_like(
-    a: OperandLike,
+    a: TensorLike,
     /,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     requires_grad: bool = False,
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     order: Order = "K",
     subok: bool = True,
-    shape: Optional[AxisLike] = None,
-) -> TensorLike:
+    shape: Axis | None = None,
+) -> TensorType:
     from ...tensor import Tensor
 
     if device is None:
         device_op = get_device(a)
     else:
         device_op = device
-    a = to_xp_array(a)
+    a = to_tensordata(a)
     if device_op == "cpu":
         y = np.zeros_like(a, dtype=dtype, order=order, subok=subok, shape=shape)
     else:
@@ -55,23 +53,23 @@ def zeros_like(
 
 
 def ones_like(
-    a: OperandLike,
+    a: TensorLike,
     /,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     requires_grad: bool = False,
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     order: Order = "K",
     subok: bool = True,
-    shape: Optional[AxisLike] = None,
-) -> TensorLike:
+    shape: Axis | None = None,
+) -> TensorType:
     from ...tensor import Tensor
 
     if device is None:
         device_op = get_device(a)
     else:
         device_op = device
-    a = to_xp_array(a)
+    a = to_tensordata(a)
     if device_op == "cpu":
         y = np.ones_like(a, dtype=dtype, order=order, subok=subok, shape=shape)
     else:
@@ -82,13 +80,13 @@ def ones_like(
 
 
 def zeros(
-    shape: ShapeLike,
+    shape: Shape,
     dtype: DTypeLike = float,
     order: Literal["C", "F"] = "C",
     *,
-    device: DeviceLike = "cpu",
+    device: Device = "cpu",
     requires_grad: bool = False,
-) -> TensorLike:
+) -> TensorType:
     from ...tensor import Tensor
 
     if device == "cpu":
@@ -101,13 +99,13 @@ def zeros(
 
 
 def ones(
-    shape: ShapeLike,
+    shape: Shape,
     dtype: DTypeLike = float,
     order: Literal["C", "F"] = "C",
     *,
-    device: DeviceLike = "cpu",
+    device: Device = "cpu",
     requires_grad: bool = False,
-) -> TensorLike:
+) -> TensorType:
     from ...tensor import Tensor
 
     if device == "cpu":

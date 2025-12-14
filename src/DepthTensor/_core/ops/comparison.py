@@ -1,12 +1,12 @@
-from typing import Union, Optional, Tuple, overload
+from typing import overload, Union, Tuple
 
 from ...typing import (
-    TensorLike,
-    DeviceLike,
-    NDArrayLikeBool,
+    TensorType,
+    Device,
+    TensorDataBool,
     Casting,
     Order,
-    OperandLike,
+    TensorLike,
 )
 
 from ..exceptions import (
@@ -16,7 +16,7 @@ from ..exceptions import (
     DEVICE_MISMATCH_MSG,
 )
 
-from ..utils import to_xp_array, get_device, get_two_operand_op_device
+from ..utils import to_tensordata, get_device, get_two_operand_op_device
 
 import numpy as np
 
@@ -32,35 +32,35 @@ except (ImportError, ModuleNotFoundError):
 
 @overload
 def where(
-    condition: OperandLike,
+    condition: TensorLike,
     /,
     *,
-    device: DeviceLike = "cpu",
+    device: Device = "cpu",
     requires_grad: bool = False,
-) -> Tuple[TensorLike, ...]: ...
+) -> Tuple[TensorType, ...]: ...
 
 
 @overload
 def where(
-    condition: OperandLike,
-    x: Optional[OperandLike],
-    y: Optional[OperandLike],
+    condition: TensorLike,
+    x: TensorLike | None,
+    y: TensorLike | None,
     /,
     *,
-    device: DeviceLike = "cpu",
+    device: Device = "cpu",
     requires_grad: bool = False,
-) -> TensorLike: ...
+) -> TensorType: ...
 
 
 def where(
-    condition: OperandLike,
-    x: Optional[OperandLike] = None,
-    y: Optional[OperandLike] = None,
+    condition: TensorLike,
+    x: TensorLike | None = None,
+    y: TensorLike | None = None,
     /,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     requires_grad: bool = False,
-) -> Union[Tuple[TensorLike, ...], TensorLike]:
+) -> Union[tuple[TensorType, ...], TensorType]:
     from ...tensor import Tensor
 
     if device is None:
@@ -68,9 +68,9 @@ def where(
 
     # * One parameter overload
     if (x is None) and (y is None):
-        data = to_xp_array(condition, device=device)
+        data = to_tensordata(condition, device=device)
         if device == "cpu":
-            result = np.where(data)
+            result = np.where(data)  # type: ignore
         else:
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
@@ -85,9 +85,9 @@ def where(
         ):
             raise DeviceMismatch(DEVICE_MISMATCH_MSG)
 
-        data = to_xp_array(condition, device=device)
-        x_data = to_xp_array(x, device=device)
-        y_data = to_xp_array(y, device=device)
+        data = to_tensordata(condition, device=device)
+        x_data = to_tensordata(x, device=device)
+        y_data = to_tensordata(y, device=device)
         if device == "cpu":
             result = np.where(data, x_data, y_data)
         else:
@@ -105,24 +105,24 @@ def where(
 
 
 def wrapper_2in_1out(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLikeBool] = None,
+    out: TensorDataBool | None = None,
     *,
     func_name: str,
-    device: Optional[DeviceLike] = None,
-    where: Union[bool, NDArrayLikeBool] = True,
+    device: Device | None = None,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
     dtype: None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     from ...tensor import Tensor
 
     op_device = get_two_operand_op_device(x1, x2, device)
 
-    x1, x2 = to_xp_array(x1, device=op_device), to_xp_array(x2, device=op_device)
+    x1, x2 = to_tensordata(x1, device=op_device), to_tensordata(x2, device=op_device)
     if op_device == "cpu":
         y = getattr(np, func_name)(
             x1,
@@ -142,18 +142,18 @@ def wrapper_2in_1out(
 
 
 def equal(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLikeBool] = None,
+    out: TensorDataBool | None = None,
     *,
-    device: Optional[DeviceLike] = None,
-    where: Union[bool, NDArrayLikeBool] = True,
+    device: Device | None = None,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
     dtype: None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,
@@ -169,18 +169,18 @@ def equal(
 
 
 def not_equal(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLikeBool] = None,
+    out: TensorDataBool | None = None,
     *,
-    device: Optional[DeviceLike] = None,
-    where: Union[bool, NDArrayLikeBool] = True,
+    device: Device | None = None,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
     dtype: None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,
@@ -196,18 +196,18 @@ def not_equal(
 
 
 def greater(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLikeBool] = None,
+    out: TensorDataBool | None = None,
     *,
-    device: Optional[DeviceLike] = None,
-    where: Union[bool, NDArrayLikeBool] = True,
+    device: Device | None = None,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
     dtype: None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,
@@ -223,18 +223,18 @@ def greater(
 
 
 def greater_equal(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLikeBool] = None,
+    out: TensorDataBool | None = None,
     *,
-    device: Optional[DeviceLike] = None,
-    where: Union[bool, NDArrayLikeBool] = True,
+    device: Device | None = None,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
     dtype: None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,
@@ -250,18 +250,18 @@ def greater_equal(
 
 
 def less(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLikeBool] = None,
+    out: TensorDataBool | None = None,
     *,
-    device: Optional[DeviceLike] = None,
-    where: Union[bool, NDArrayLikeBool] = True,
+    device: Device | None = None,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
     dtype: None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,
@@ -277,18 +277,18 @@ def less(
 
 
 def less_equal(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLikeBool] = None,
+    out: TensorDataBool | None = None,
     *,
-    device: Optional[DeviceLike] = None,
-    where: Union[bool, NDArrayLikeBool] = True,
+    device: Device | None = None,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
     dtype: None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,

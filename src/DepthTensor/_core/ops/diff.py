@@ -1,8 +1,11 @@
 from typing import Callable
 
-from ...typing import OperandLike, TensorLike, NDArrayLike, AxisLike
-
-from ..utils import sum_to_shape, to_xp_array, get_two_operand_op_device
+from ...typing import TensorLike, TensorData, Axis, TensorType
+from ..utils import (
+    unbroadcast_tensordata_to_shape,
+    to_tensordata,
+    get_two_operand_op_device,
+)
 from ..exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG
 
 import numpy as np
@@ -19,12 +22,12 @@ except (ImportError, ModuleNotFoundError):
 
 
 def wrapper_2in_diff(
-    result: TensorLike,
-    x1: OperandLike,
-    x2: OperandLike,
+    result: TensorType,
+    x1: TensorLike,
+    x2: TensorLike,
     callback_x1: Callable,
     callback_x2: Callable,
-) -> TensorLike:
+) -> TensorType:
     if not result.requires_grad:
         return result
     from ...tensor import Tensor
@@ -33,9 +36,9 @@ def wrapper_2in_diff(
         if result.grad is None:
             result.zeros_grad()
 
-        result_grad: NDArrayLike = result.grad
+        result_grad: TensorData = result.grad  # type: ignore (result.grad cannot be None)
         device = get_two_operand_op_device(x1, x2, None)
-        x1_data, x2_data = to_xp_array(x1, device=device), to_xp_array(
+        x1_data, x2_data = to_tensordata(x1, device=device), to_tensordata(
             x2, device=device
         )
 
@@ -57,8 +60,8 @@ def wrapper_2in_diff(
 
 
 def wrapper_1in_diff(
-    result: TensorLike, x: OperandLike, callback_x1: Callable
-) -> TensorLike:
+    result: TensorType, x: TensorLike, callback_x1: Callable
+) -> TensorType:
     if not result.requires_grad:
         return result
     from ...tensor import Tensor
@@ -67,8 +70,8 @@ def wrapper_1in_diff(
         if result.grad is None:
             result.zeros_grad()
 
-        result_grad: NDArrayLike = result.grad
-        _x = to_xp_array(x)
+        result_grad: TensorData = result.grad  # type: ignore
+        _x = to_tensordata(x)
         if isinstance(x, Tensor) and x.requires_grad:
             if x.grad is None:
                 x.zeros_grad()
@@ -83,102 +86,110 @@ def wrapper_1in_diff(
 ###
 
 
-def add_diff(result: TensorLike, x1: OperandLike, x2: OperandLike) -> TensorLike:
+def add_diff(result: TensorType, x1: TensorLike, x2: TensorLike) -> TensorType:
     def callback_x1(result_grad, x1_shape, device, x1_data, x2_data):
-        return sum_to_shape(result_grad, x1_shape, device)
+        return unbroadcast_tensordata_to_shape(result_grad, x1_shape, device)
 
     def callback_x2(result_grad, x2_shape, device, x1_data, x2_data):
-        return sum_to_shape(result_grad, x2_shape, device)
+        return unbroadcast_tensordata_to_shape(result_grad, x2_shape, device)
 
     return wrapper_2in_diff(result, x1, x2, callback_x1, callback_x2)
 
 
-def subtract_diff(result: TensorLike, x1: OperandLike, x2: OperandLike) -> TensorLike:
+def subtract_diff(result: TensorType, x1: TensorLike, x2: TensorLike) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data, x2_data):
-        return sum_to_shape(result_grad, x1_shape, device)
+        return unbroadcast_tensordata_to_shape(result_grad, x1_shape, device)
 
     def callback_x2(result_grad, x2_shape, device, x1_data, x2_data):
-        return sum_to_shape(-result_grad, x2_shape, device)
+        return unbroadcast_tensordata_to_shape(-result_grad, x2_shape, device)
 
     return wrapper_2in_diff(result, x1, x2, callback_x1, callback_x2)
 
 
-def multiply_diff(result: TensorLike, x1: OperandLike, x2: OperandLike) -> TensorLike:
+def multiply_diff(result: TensorType, x1: TensorLike, x2: TensorLike) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data, x2_data):
-        return sum_to_shape(result_grad * x2_data, x1_shape, device)
+        return unbroadcast_tensordata_to_shape(result_grad * x2_data, x1_shape, device)
 
     def callback_x2(result_grad, x2_shape, device, x1_data, x2_data):
-        return sum_to_shape(result_grad * x1_data, x2_shape, device)
+        return unbroadcast_tensordata_to_shape(result_grad * x1_data, x2_shape, device)
 
     return wrapper_2in_diff(result, x1, x2, callback_x1, callback_x2)
 
 
-def matmul_diff(result: TensorLike, x1: OperandLike, x2: OperandLike) -> TensorLike:
+def matmul_diff(result: TensorType, x1: TensorLike, x2: TensorLike) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data, x2_data):
-        return sum_to_shape(result_grad @ x2_data.swapaxes(-2, -1), x1_shape, device)
+        return unbroadcast_tensordata_to_shape(
+            result_grad @ x2_data.swapaxes(-2, -1), x1_shape, device
+        )
 
     def callback_x2(result_grad, x2_shape, device, x1_data, x2_data):
-        return sum_to_shape(x1_data.swapaxes(-2, -1) @ result_grad, x2_shape, device)
+        return unbroadcast_tensordata_to_shape(
+            x1_data.swapaxes(-2, -1) @ result_grad, x2_shape, device
+        )
 
     return wrapper_2in_diff(result, x1, x2, callback_x1, callback_x2)
 
 
-def divide_diff(result: TensorLike, x1: OperandLike, x2: OperandLike) -> TensorLike:
+def divide_diff(result: TensorType, x1: TensorLike, x2: TensorLike) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data, x2_data):
-        return sum_to_shape(result_grad / x2_data, x1_shape, device)
+        return unbroadcast_tensordata_to_shape(result_grad / x2_data, x1_shape, device)
 
     def callback_x2(result_grad, x2_shape, device, x1_data, x2_data):
-        return sum_to_shape(result_grad * (x1_data * -(x2_data**-2)), x2_shape, device)
+        return unbroadcast_tensordata_to_shape(
+            result_grad * (x1_data * -(x2_data**-2)), x2_shape, device
+        )
 
     return wrapper_2in_diff(result, x1, x2, callback_x1, callback_x2)
 
 
-def power_diff(result: TensorLike, x1: OperandLike, x2: OperandLike) -> TensorLike:
+def power_diff(result: TensorType, x1: TensorLike, x2: TensorLike) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data, x2_data):
-        return sum_to_shape(
+        return unbroadcast_tensordata_to_shape(
             result_grad * x2_data * x1_data ** (x2_data - 1), x1_shape, device
         )
 
     def callback_x2(result_grad, x2_shape, device, x1_data, x2_data):
         if device == "cpu":
-            return sum_to_shape(
+            return unbroadcast_tensordata_to_shape(
                 result_grad * np.log(x1_data) * x1_data**x2_data, x2_shape, device
             )
         else:
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-            return sum_to_shape(
+            return unbroadcast_tensordata_to_shape(
                 result_grad * cp.log(x1_data) * x1_data**x2_data, x2_shape, device
             )
 
     return wrapper_2in_diff(result, x1, x2, callback_x1, callback_x2)
 
 
-def negative_diff(result: TensorLike, x: TensorLike) -> TensorLike:
+def negative_diff(result: TensorType, x: TensorType) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data):
-        return sum_to_shape(-result_grad, x1_shape, device)
+        return unbroadcast_tensordata_to_shape(-result_grad, x1_shape, device)
 
     return wrapper_1in_diff(result, x, callback_x1)
 
 
-def sign_diff(result: TensorLike, x: TensorLike) -> TensorLike:
+def sign_diff(result: TensorType, x: TensorType) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data):
-        return sum_to_shape(result_grad * 0, x1_shape, device)
+        return unbroadcast_tensordata_to_shape(result_grad * 0, x1_shape, device)
 
     return wrapper_1in_diff(result, x, callback_x1)
 
 
-def abs_diff(result: TensorLike, x: TensorLike) -> TensorLike:
+def abs_diff(result: TensorType, x: TensorType) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data):
-        return sum_to_shape(result_grad * result.data / x1_data, x1_shape, device)
+        return unbroadcast_tensordata_to_shape(
+            result_grad * result.data / x1_data, x1_shape, device
+        )
 
     return wrapper_1in_diff(result, x, callback_x1)
 
@@ -188,36 +199,40 @@ def abs_diff(result: TensorLike, x: TensorLike) -> TensorLike:
 ###
 
 
-def exp_diff(result: TensorLike, x: TensorLike) -> TensorLike:
+def exp_diff(result: TensorType, x: TensorType) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data):
-        return sum_to_shape(result_grad * result.data, x1_shape, device)
+        return unbroadcast_tensordata_to_shape(
+            result_grad * result.data, x1_shape, device
+        )
 
     return wrapper_1in_diff(result, x, callback_x1)
 
 
-def sqrt_diff(result: TensorLike, x: TensorLike) -> TensorLike:
+def sqrt_diff(result: TensorType, x: TensorType) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data):
-        return sum_to_shape(
+        return unbroadcast_tensordata_to_shape(
             result_grad * (0.5 * result.data ** (-0.5)), x1_shape, device
         )
 
     return wrapper_1in_diff(result, x, callback_x1)
 
 
-def log_diff(result: TensorLike, x: TensorLike) -> TensorLike:
+def log_diff(result: TensorType, x: TensorType) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data):
-        return sum_to_shape(result_grad / x1_data, x1_shape, device)
+        return unbroadcast_tensordata_to_shape(result_grad / x1_data, x1_shape, device)
 
     return wrapper_1in_diff(result, x, callback_x1)
 
 
-def square_diff(result: TensorLike, x: TensorLike) -> TensorLike:
+def square_diff(result: TensorType, x: TensorType) -> TensorType:
 
     def callback_x1(result_grad, x1_shape, device, x1_data):
-        return sum_to_shape(result_grad * 2 * x1_data, x1_shape, device)
+        return unbroadcast_tensordata_to_shape(
+            result_grad * 2 * x1_data, x1_shape, device
+        )
 
     return wrapper_1in_diff(result, x, callback_x1)
 
@@ -228,8 +243,8 @@ def square_diff(result: TensorLike, x: TensorLike) -> TensorLike:
 
 
 def mean_diff(
-    result: TensorLike, x: TensorLike, axis: AxisLike, keepdims: bool
-) -> TensorLike:
+    result: TensorType, x: TensorType, axis: Axis, keepdims: bool
+) -> TensorType:
     def callback_x1(result_grad, x1_shape, device, _x):
         if device == "cpu":
             xp = np

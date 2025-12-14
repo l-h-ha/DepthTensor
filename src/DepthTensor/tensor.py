@@ -1,16 +1,18 @@
 from __future__ import annotations
-from typing import Union, Optional, Any, Tuple, Callable, overload, Iterator, List
+from typing import Any, Callable, Iterator
 
 from .typing import (
-    NDArrayLike,
+    ArrayLike,
+    ScalarLike,
+    TensorData,
     DTypeLike,
     Order,
-    DeviceLike,
-    ShapeLike,
-    NDArrayLikeBool,
+    Device,
+    Shape,
+    TensorDataBool,
     Casting,
-    OperandLike,
-    AxisLike,
+    TensorLike,
+    Axis,
 )
 
 from ._core import (
@@ -49,7 +51,7 @@ from ._core import (
     sum,
 )
 
-from ._core.utils import get_device, to_xp_array, xp_array_to_device
+from ._core.utils import get_device, to_tensordata, tensordata_to_device
 
 import numpy as np
 
@@ -66,9 +68,9 @@ _NoValue = object()
 
 def _wrapper_2in_1out(
     y: Tensor,
-    diff_func: Callable[[Tensor, OperandLike, OperandLike], Tensor],
-    x1: OperandLike,
-    x2: OperandLike,
+    diff_func: Callable[[Tensor, TensorLike, TensorLike], Tensor],
+    x1: TensorLike,
+    x2: TensorLike,
     record_op: bool = True,
 ) -> Tensor:
     if record_op:
@@ -79,7 +81,7 @@ def _wrapper_2in_1out(
 def _wrapper_1in_1out(
     y: Tensor,
     diff_func: Callable,
-    x: OperandLike,
+    x: TensorLike,
     record_op: bool = True,
     **kwargs: Any,
 ):
@@ -102,62 +104,50 @@ def is_list_of_type(list_obj, type_obj) -> bool:
 
 
 class Tensor:
-    data: NDArrayLike
-    device: DeviceLike
-    grad: Optional[NDArrayLike]
-    backward: Optional[Callable[[], None]]
+    data: TensorData
+    device: Device
+    grad: TensorData | None
+    backward: Callable[[], None] | None
 
     def __init__(
         self,
-        obj: Union[OperandLike, List[NDArrayLike]],
+        obj: TensorLike,
         /,
         *,
-        dtype: Optional[DTypeLike] = None,
-        device: Optional[DeviceLike] = None,
-        prev: Tuple = (),
+        dtype: DTypeLike | None = None,
+        device: Device | None = None,
+        prev: tuple = (),
         requires_grad: bool = False,
-        copy: bool = True,
-        order: Order = "K",
-        subok: bool = False,
-        ndmin: int = 0,
-        blocking: bool = False,
     ) -> None:
+        # Device init
         if device is None:
             self.device = get_device(obj)
         else:
             self.device = device
 
-        if isinstance(obj, np.ndarray):
-            if obj.dtype.kind in allowed_dtype_kind:
-                self.data = xp_array_to_device(obj, self.device)
-            else:
-                raise TypeError("Expected a numerical NumPy array.")
+        # Data init
+        if isinstance(obj, Tensor):
+            self.data = obj.data
+        elif isinstance(obj, np.ndarray):
+            self.data = obj
+        elif cp is not None and isinstance(obj, cp.ndarray):
+            self.data = obj
         else:
-            if cp is not None and isinstance(obj, cp.ndarray):
-                if obj.dtype.kind in allowed_dtype_kind:  # type: ignore
-                    self.data = xp_array_to_device(obj, self.device)
-                else:
-                    raise TypeError("Expected a numerical CuPy array.")
-            elif isinstance(obj, Tensor):
-                self.data = xp_array_to_device(obj.data, self.device)
-            elif is_list_of_type(obj, Tensor):
-                self.data = [xp_array_to_device(t) for t in obj]  # type: ignore
-            else:
-                self.data = xp_array_to_device(
-                    to_xp_array(obj, self.device), self.device
-                )
+            self.data = to_tensordata(obj, self.device)
 
-        # TODO: Use all the parameters.
-
-        # * Convert to dtype (if provided)
+        # Conversion
         if dtype is not None and dtype != self.data.dtype:
             self.data = self.data.astype(dtype)
+        if get_device(self.data) != self.device:
+            self.data = tensordata_to_device(self.data, self.device)
+
+        # Other inits
         self.prev = prev
         self.requires_grad = requires_grad
         self.backward = None
         self.grad = None
 
-    def zeros_grad(self) -> NDArrayLike:
+    def zeros_grad(self) -> TensorData:
         if self.device == "cpu":
             grad = np.zeros_like(self.data)
         else:
@@ -175,8 +165,8 @@ class Tensor:
         self,
         *,
         order: Order = "K",
-        dtype: Optional[DTypeLike] = None,
-        device: Optional[DeviceLike] = None,
+        dtype: DTypeLike | None = None,
+        device: Device | None = None,
         copy_prev: bool = False,
         copy_requires_grad: bool = False,
         copy_grad: bool = False,
@@ -192,9 +182,7 @@ class Tensor:
             t.grad = self.grad
         return t
 
-    def make_differentiable(
-        self, grad: Optional[Union[Tensor, np.ndarray, Any]] = None
-    ) -> None:
+    def make_differentiable(self, grad: Tensor | TensorData | None = None) -> None:
         if not self.requires_grad:
             self.requires_grad = True
 
@@ -230,7 +218,7 @@ class Tensor:
                     )
 
     def to_device(
-        self, device: DeviceLike, in_place: bool = False, clear_prev: bool = True
+        self, device: Device, in_place: bool = False, clear_prev: bool = True
     ) -> Tensor:
         if device == self.device:
             if in_place:
@@ -245,14 +233,14 @@ class Tensor:
 
                 self.device = device
                 self.prev = () if clear_prev else self.prev
-                self.data = xp_array_to_device(self.data, device=device)
+                self.data = tensordata_to_device(self.data, device=device)
                 return self
             return self.copy(device=device)
 
-    def get_device(self) -> DeviceLike:
+    def get_device(self) -> Device:
         return self.device
 
-    def is_device(self, device: DeviceLike) -> bool:
+    def is_device(self, device: Device) -> bool:
         return self.device == device
 
     def is_cpu(self) -> bool:
@@ -270,7 +258,7 @@ class Tensor:
         return self.data.dtype
 
     @property
-    def shape(self) -> ShapeLike:
+    def shape(self) -> Shape:
         return self.data.shape
 
     @property
@@ -291,17 +279,17 @@ class Tensor:
 
     def clip(
         self,
-        a_min: OperandLike,
-        a_max: OperandLike,
+        a_min: TensorLike,
+        a_max: TensorLike,
         /,
-        out: Optional[NDArrayLike] = None,
+        out: TensorData | None = None,
         *,
         requires_grad: bool = False,
-        device: DeviceLike = "cpu",
-        where: Union[bool, NDArrayLikeBool] = True,
+        device: Device = "cpu",
+        where: TensorDataBool | bool = True,
         casting: Casting = "same_kind",
         order: Order = "K",
-        dtype: Optional[DTypeLike] = None,
+        dtype: DTypeLike | None = None,
         subok: bool = True,
     ) -> Tensor:
         return clip(
@@ -321,14 +309,14 @@ class Tensor:
     def mean(
         self,
         /,
-        axis: Optional[AxisLike] = None,
-        dtype: Optional[DTypeLike] = None,
-        out: Optional[NDArrayLike] = None,
+        axis: Axis | None = None,
+        dtype: DTypeLike | None = None,
+        out: TensorData | None = None,
         keepdims: bool = False,
         *,
-        device: Optional[DeviceLike] = None,
+        device: Device | None = None,
         in_place: bool = False,
-        where: Union[bool, NDArrayLikeBool] = True,
+        where: TensorDataBool | bool = True,
     ) -> Tensor:
         return _wrapper_1in_1out(
             mean(
@@ -355,14 +343,14 @@ class Tensor:
         self,
         /,
         *,
-        device: DeviceLike = "cpu",
+        device: Device = "cpu",
         requires_grad: bool = False,
-        axis: Optional[AxisLike] = None,
-        dtype: Optional[DTypeLike] = None,
-        out: Optional[NDArrayLike] = None,
+        axis: Axis | None = None,
+        dtype: DTypeLike | None = None,
+        out: TensorData | None = None,
         keepdims: bool = True,
         initial: Any = _NoValue,
-        where: Union[bool, NDArrayLikeBool] = True,
+        where: TensorDataBool | bool = True,
     ) -> Tensor:
         return sum(
             self,
@@ -380,13 +368,13 @@ class Tensor:
         self,
         /,
         *,
-        device: DeviceLike = "cpu",
+        device: Device = "cpu",
         requires_grad: bool = False,
-        axis: Optional[AxisLike] = None,
-        out: Optional[NDArrayLike] = None,
+        axis: Axis | None = None,
+        out: TensorData | None = None,
         keepdims: bool = False,
         initial: Any = _NoValue,
-        where: Union[bool, NDArrayLikeBool] = True,
+        where: TensorDataBool | bool = True,
     ) -> Tensor:
         return max(
             self,
@@ -401,16 +389,16 @@ class Tensor:
 
     def maximum(
         self,
-        x2: OperandLike,
+        x2: TensorLike,
         /,
-        out: Optional[np.ndarray] = None,
+        out: TensorData | None = None,
         *,
-        device: DeviceLike = "cpu",
+        device: Device = "cpu",
         requires_grad: bool = False,
-        where: Union[bool, NDArrayLikeBool] = True,
+        where: TensorDataBool | bool = True,
         casting: Casting = "same_kind",
         order: Order = "K",
-        dtype: Optional[DTypeLike] = None,
+        dtype: DTypeLike | None = None,
         subok: bool = True,
     ) -> Tensor:
         return maximum(
@@ -430,97 +418,97 @@ class Tensor:
     ### Dunder Operations
     ###
 
-    def __add__(self, t: OperandLike) -> Tensor:
+    def __add__(self, t: TensorLike) -> Tensor:
         return _wrapper_2in_1out(
             y=add(self, t), diff_func=add_diff, x1=self, x2=t, record_op=True
         )
 
-    def __radd__(self, t: OperandLike) -> Tensor:
+    def __radd__(self, t: TensorLike) -> Tensor:
         return _wrapper_2in_1out(
             y=add(t, self), diff_func=add_diff, x1=t, x2=self, record_op=True
         )
 
-    def __iadd__(self, t: OperandLike) -> Tensor:
+    def __iadd__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
                 "In-place operations are (add) forbidden on differentiable tensors."
             )
         return add(self, t, in_place=True)
 
-    def __sub__(self, t: OperandLike) -> Tensor:
+    def __sub__(self, t: TensorLike) -> Tensor:
         return _wrapper_2in_1out(
             y=subtract(self, t), diff_func=subtract_diff, x1=self, x2=t, record_op=True
         )
 
-    def __rsub__(self, t: OperandLike) -> Tensor:
+    def __rsub__(self, t: TensorLike) -> Tensor:
         return _wrapper_2in_1out(
             y=subtract(t, self), diff_func=subtract_diff, x1=t, x2=self, record_op=True
         )
 
-    def __isub__(self, t: OperandLike) -> Tensor:
+    def __isub__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
                 "In-place operations (sub) are forbidden on differentiable tensors."
             )
         return subtract(self, t, in_place=True)
 
-    def __mul__(self, t: OperandLike) -> Tensor:
+    def __mul__(self, t: TensorLike) -> Tensor:
         return _wrapper_2in_1out(
             y=multiply(self, t), diff_func=multiply_diff, x1=self, x2=t, record_op=True
         )
 
-    def __rmul__(self, t: OperandLike) -> Tensor:
+    def __rmul__(self, t: TensorLike) -> Tensor:
         return _wrapper_2in_1out(
             y=multiply(t, self), diff_func=multiply_diff, x1=t, x2=self, record_op=True
         )
 
-    def __imul__(self, t: OperandLike) -> Tensor:
+    def __imul__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
                 "In-place operations are (mul) forbidden on differentiable tensors."
             )
         return multiply(self, t, in_place=True)
 
-    def __matmul__(self, t: OperandLike) -> Tensor:
+    def __matmul__(self, t: TensorLike) -> Tensor:
         return _wrapper_2in_1out(
             y=matmul(self, t), diff_func=matmul_diff, x1=self, x2=t, record_op=True
         )
 
-    def __rmatmul__(self, t: OperandLike) -> Tensor:
+    def __rmatmul__(self, t: TensorLike) -> Tensor:
         return _wrapper_2in_1out(
             y=matmul(t, self), diff_func=matmul_diff, x1=t, x2=self, record_op=True
         )
 
-    def __imatmul__(self, t: OperandLike) -> Tensor:
+    def __imatmul__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
                 "In-place operations are (matmul) forbidden on differentiable tensors."
             )
         return matmul(self, t, in_place=True)
 
-    def __truediv__(self, t: OperandLike) -> Tensor:
+    def __truediv__(self, t: TensorLike) -> Tensor:
         return _wrapper_2in_1out(
             y=divide(self, t), diff_func=divide_diff, x1=self, x2=t, record_op=True
         )
 
-    def __rtruediv__(self, t: OperandLike) -> Tensor:
+    def __rtruediv__(self, t: TensorLike) -> Tensor:
         return _wrapper_2in_1out(
             y=divide(t, self), diff_func=divide_diff, x1=t, x2=self, record_op=True
         )
 
-    def __itruediv__(self, t: OperandLike) -> Tensor:
+    def __itruediv__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
                 "In-place operations (div) are forbidden on differentiable tensors."
             )
         return divide(self, t, in_place=True)
 
-    def __pow__(self, t: OperandLike) -> Tensor:
+    def __pow__(self, t: TensorLike) -> Tensor:
         return _wrapper_2in_1out(
             y=power(self, t), diff_func=power_diff, x1=self, x2=t, record_op=True
         )
 
-    def __ipow__(self, t: OperandLike) -> Tensor:
+    def __ipow__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
             raise RuntimeError(
                 "In-place operations (pow) are forbidden on differentiable tensors."

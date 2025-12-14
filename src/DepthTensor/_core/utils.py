@@ -1,6 +1,6 @@
-from typing import Any, Union, Tuple, Optional
+from typing import Any
 
-from ..typing import DeviceLike, OperandLike, NDArrayLike
+from ..typing import Device, TensorLike, TensorData
 
 from .exceptions import (
     CuPyNotFound,
@@ -21,9 +21,7 @@ except (ImportError, ModuleNotFoundError):
 ###
 
 
-def xp_array_to_device(
-    obj: Union[np.ndarray, Any], device: DeviceLike
-) -> Union[np.ndarray, Any]:
+def tensordata_to_device(obj: TensorData, device: Device) -> TensorData:
     if isinstance(obj, np.ndarray):
         if device == "cpu":
             return obj
@@ -44,7 +42,9 @@ def xp_array_to_device(
             )
 
 
-def sum_to_shape(result: Any, target_shape: Tuple, device: DeviceLike) -> Any:
+def unbroadcast_tensordata_to_shape(
+    result: TensorData, target_shape: tuple, device: Device
+) -> Any:
     """
     Reverses broadcasting to the un-broadcasted shape.
 
@@ -97,56 +97,41 @@ def sum_to_shape(result: Any, target_shape: Tuple, device: DeviceLike) -> Any:
     return result
 
 
-def to_xp_array(a: OperandLike, device: Optional[DeviceLike] = None) -> NDArrayLike:
+def to_tensordata(a: TensorLike, device: Device | None = None) -> TensorData:
     """
-    Convert data to numpy.ndarray/cp.ndarray.
+    Convert TensorLike to TensorData
     """
     from ..tensor import Tensor
 
+    if not device:
+        device = get_device(device)
+
     if isinstance(a, Tensor):
         y = a.data
-    else:
+    elif isinstance(a, np.ndarray) or (cp is not None and isinstance(a, cp.ndarray)):
         y = a
-    if device is not None:
-        if isinstance(y, np.ndarray):
-            if device == "cpu":
-                return y
+    else:
+        if device == "cpu":
+            y = np.array(a)
+        else:
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-            return cp.array(y)
-        else:
-            if cp is not None and isinstance(y, cp.ndarray):
-                if device == "gpu":
-                    # ? In this scope, y is a cp.ndarray; however, pylance still thinks y is an OperandLike.
-                    return y  # pyright: ignore[reportReturnType]
-                return cp.asnumpy(y)
-            else:
-                if device == "cpu":
-                    return np.array(y)
-                else:
-                    if cp is None:
-                        raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-                    return cp.array(y)
-    else:
-        if isinstance(y, np.ndarray):
-            return y
-        else:
-            if cp is not None and isinstance(y, cp.ndarray):
-                # ? In this scope, y is a cp.ndarray; however, pylance still thinks y is an OperandLike.
-                return y  # pyright: ignore[reportReturnType]
-            return np.array(y)
+            y = cp.array(a)
+
+    # Convert if needed.
+    if get_device(y) != device:
+        return tensordata_to_device(y, device)
+    return y
 
 
-def get_device(a: OperandLike) -> DeviceLike:
+def get_device(a: TensorLike) -> Device:
     from ..tensor import Tensor
 
     if isinstance(a, Tensor):
         return a.device
-    elif isinstance(a, (np.ndarray, np.floating, np.integer, np.bool)):
+    elif isinstance(a, (np.ndarray, np.number, np.bool_)):
         return "cpu"
-    elif cp is not None and isinstance(
-        a, (cp.ndarray, cp.integer, cp.floating, cp.bool_)
-    ):
+    elif cp is not None and isinstance(a, (cp.ndarray, cp.number, cp.bool_)):
         return "gpu"
     elif isinstance(a, (int, float, list, tuple, bool)):
         return "cpu"
@@ -154,7 +139,7 @@ def get_device(a: OperandLike) -> DeviceLike:
         raise RuntimeError(f"Invalid argument type: {type(a)}")
 
 
-def get_complement_device(device: DeviceLike) -> DeviceLike:
+def get_complement_device(device: Device) -> Device:
     if device == "cpu":
         return "gpu"
     else:
@@ -162,8 +147,8 @@ def get_complement_device(device: DeviceLike) -> DeviceLike:
 
 
 def get_two_operand_op_device(
-    x1: OperandLike, x2: OperandLike, device: Optional[DeviceLike]
-) -> DeviceLike:
+    x1: TensorLike, x2: TensorLike, device: Device | None
+) -> Device:
     if device is not None:
         return device
 
@@ -221,8 +206,8 @@ def get_two_operand_op_device(
 ###
 
 __all__ = [
-    "xp_array_to_device",
-    "sum_to_shape",
-    "to_xp_array",
+    "tensordata_to_device",
+    "unbroadcast_tensordata_to_shape",
+    "to_tensordata",
     "get_two_operand_op_device",
 ]

@@ -1,27 +1,18 @@
-from typing import (
-    TypeAlias,
-    Union,
-    Literal,
-    Tuple,
-    List,
-    TYPE_CHECKING,
-    Protocol,
-    Any,
-    Callable,
-    Optional,
-)
-
-if TYPE_CHECKING:
-    from .tensor import Tensor
-TensorLike: TypeAlias = "Tensor"
+from typing import TypeAlias, Literal, TYPE_CHECKING, Protocol, Any, Callable, Union
 
 import numpy as np
 import numpy.typing as npt
 
-DeviceLike: TypeAlias = Literal["cpu", "gpu"]
-ScalarLike: TypeAlias = Union[int, float, bool]
-ShapeLike: TypeAlias = Tuple[int, ...]
-AxisLike: TypeAlias = Union[int, ShapeLike]
+if TYPE_CHECKING:
+    from .tensor import Tensor
+
+###
+###
+###
+
+Shape: TypeAlias = tuple[int, ...]
+Axis: TypeAlias = int | Shape
+Device: TypeAlias = Literal["cpu", "gpu"]
 Order: TypeAlias = Literal["K", "A", "C", "F"]
 Casting: TypeAlias = Literal["no", "equiv", "safe", "same_kind", "unsafe"]
 
@@ -37,85 +28,68 @@ int32: TypeAlias = np.int32
 int64: TypeAlias = np.int64
 double: TypeAlias = np.double
 
-NDArrayLike: TypeAlias = Union[npt.NDArray[np.number], Any]
-NDArrayLikeBool: TypeAlias = Union[npt.NDArray[np.bool_], Any]
-OperandLike: TypeAlias = Union[
-    ScalarLike, NDArrayLike, NDArrayLikeBool, TensorLike, List, Tuple
-]
+###
+###
+###
+
+TensorType: TypeAlias = "Tensor"
+TensorData: TypeAlias = npt.NDArray[Any] | Any
+TensorDataBool: TypeAlias = npt.NDArray[np.bool_] | Any
+
+ScalarLike: TypeAlias = int | float | bool | np.integer | np.floating | np.bool_
+ArrayLike: TypeAlias = TensorData | ScalarLike | list | tuple
+TensorLike: TypeAlias = Union[TensorType, ScalarLike | ArrayLike | TensorData]
+
+###
+###
+###
 
 
-class cfunc_2in_1out_pro(Protocol):
+class BinaryFunc(Protocol):
     def __call__(
         self,
-        x1: OperandLike,
-        x2: OperandLike,
+        x1: TensorLike,
+        x2: TensorLike,
         *,
-        device: Optional[DeviceLike] = None,
+        device: Device | None = None,
         requires_grad: bool = True,
-        **kwds: Any
+        **kwds: Any,
+    ) -> "Tensor": ...
+
+
+class BinaryOp(Protocol):
+    def __call__(
+        self, x1: TensorData, x2: TensorData, *, device: Device, **kwds: Any
     ) -> TensorLike: ...
 
 
-class cop_2in_1out_pro(Protocol):
+class BinaryDiff(Protocol):
     def __call__(
-        self, x1: NDArrayLike, x2: NDArrayLike, *, device: DeviceLike, **kwds: Any
-    ) -> OperandLike: ...
+        self, result: "Tensor", x1: TensorData, x2: TensorData, **kwds: Any
+    ) -> tuple[Callable[[], TensorData], Callable[[], TensorData]]: ...
 
 
-class cdiff_2in_1out_pro(Protocol):
-    def __call__(
-        self, result: TensorLike, x1: NDArrayLike, x2: NDArrayLike, **kwds: Any
-    ) -> Tuple[Callable[[], NDArrayLike], Callable[[], NDArrayLike]]: ...
+###
+###
+###
 
 
-class cfunc_1in_1out_pro(Protocol):
+class UnaryFunc(Protocol):
     def __call__(
         self,
-        x: OperandLike,
+        x: TensorLike,
         *,
-        device: Optional[DeviceLike] = None,
+        device: Device | None = None,
         requires_grad: bool = True,
-        **kwds: Any
-    ) -> TensorLike: ...
+        **kwds: Any,
+    ) -> "Tensor": ...
 
 
-class cop_1in_1out_pro(Protocol):
+class UnaryOp(Protocol):
+    def __call__(self, x: TensorData, *, device: Device, **kwds: Any) -> TensorLike: ...
+
+
+class UnaryDiff(Protocol):
     def __call__(
-        self, x: NDArrayLike, *, device: DeviceLike, **kwds: Any
-    ) -> OperandLike: ...
-
-
-class cdiff_1in_1out_pro(Protocol):
-    def __call__(
-        self, result: TensorLike, x: NDArrayLike, **kwds: Any
-    ) -> Callable[[], NDArrayLike]: ...
-
-
-__all__ = [
-    "DTypeLike",
-    "floating",
-    "float16",
-    "float32",
-    "float64",
-    "integer",
-    "int8",
-    "int16",
-    "int16",
-    "int64",
-    "double",
-    "DeviceLike",
-    "Order",
-    "AxisLike",
-    "ScalarLike",
-    "NDArrayLike",
-    "NDArrayLikeBool",
-    "ShapeLike",
-    "TensorLike",
-    "OperandLike",
-    "cop_2in_1out_pro",
-    "cdiff_2in_1out_pro",
-    "cfunc_2in_1out_pro",
-    "cop_1in_1out_pro",
-    "cdiff_1in_1out_pro",
-    "cfunc_1in_1out_pro",
-]
+        self, result: "Tensor", x: TensorData, **kwds: Any
+    ) -> Callable[[], TensorData]: ...

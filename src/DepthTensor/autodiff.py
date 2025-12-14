@@ -1,7 +1,5 @@
-from typing import List, Set
-
 from . import Tensor
-from .typing import NDArrayLike
+from .typing import TensorData
 from ._core.exceptions import (
     GradientComputationError,
     GRADIENT_COMPUTATION_ERROR,
@@ -17,7 +15,7 @@ except (ModuleNotFoundError, ImportError):
     cp = None
 
 
-def _grad_check(grad: NDArrayLike, tensor: Tensor) -> None:
+def _grad_check(grad: TensorData, tensor: Tensor) -> None:
     if cp is not None and (tensor.device == "gpu" and not isinstance(grad, cp.ndarray)):
         raise RuntimeError(f"Expected gradient to be a cupy.ndarray, got: {type(grad)}")
     if tensor.device == "cpu" and not isinstance(grad, np.ndarray):
@@ -30,9 +28,9 @@ def _grad_check(grad: NDArrayLike, tensor: Tensor) -> None:
         )
 
 
-def differentiate(tensor: Tensor, grad: NDArrayLike | None = None) -> List[Tensor]:
-    topo: List[Tensor] = []
-    visited: Set[Tensor] = set()
+def differentiate(tensor: Tensor, grad: TensorData | None = None) -> list[Tensor]:
+    topo: list[Tensor] = []
+    visited: set[Tensor] = set()
 
     def build(t: Tensor):
         if t in visited:

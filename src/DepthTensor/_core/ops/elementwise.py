@@ -1,21 +1,21 @@
-from typing import Optional, Union, Any, Callable
+from typing import Any
 
 from ...typing import (
-    TensorLike,
+    TensorType,
     DTypeLike,
     Casting,
     Order,
-    AxisLike,
-    NDArrayLikeBool,
-    NDArrayLike,
-    OperandLike,
-    DeviceLike,
-    cop_2in_1out_pro,
-    cdiff_2in_1out_pro,
-    cfunc_2in_1out_pro,
-    cop_1in_1out_pro,
-    cdiff_1in_1out_pro,
-    cfunc_1in_1out_pro,
+    Axis,
+    TensorDataBool,
+    TensorData,
+    TensorLike,
+    Device,
+    BinaryOp,
+    BinaryDiff,
+    BinaryFunc,
+    UnaryOp,
+    UnaryDiff,
+    UnaryFunc,
 )
 
 from ..exceptions import (
@@ -25,7 +25,7 @@ from ..exceptions import (
     CUPY_NOT_FOUND_MSG,
 )
 
-from ..utils import to_xp_array, get_device, get_two_operand_op_device
+from ..utils import to_tensordata, get_device, get_two_operand_op_device
 
 import numpy as np
 
@@ -39,7 +39,7 @@ except (ImportError, ModuleNotFoundError):
 ###
 
 
-def get_requires_grad_and_prev(x1: OperandLike, x2: OperandLike):
+def get_requires_grad_and_prev(x1: TensorLike, x2: TensorLike):
     from ...tensor import Tensor
 
     y_requires_grad = False
@@ -56,22 +56,22 @@ def get_requires_grad_and_prev(x1: OperandLike, x2: OperandLike):
     return y_requires_grad, prev
 
 
-def create_2in_1out(
-    op: cop_2in_1out_pro, diff: Optional[cdiff_2in_1out_pro]
-) -> cfunc_2in_1out_pro:
+def create_2in_1out(op: BinaryOp, diff: BinaryDiff | None) -> BinaryFunc:
     def func(
-        x1: OperandLike,
-        x2: OperandLike,
+        x1: TensorLike,
+        x2: TensorLike,
         *,
-        device: Optional[DeviceLike] = None,
+        device: Device | None = None,
         in_place: bool = False,
         requires_grad: bool = True,
         **kwds: Any,
-    ) -> TensorLike:
+    ) -> TensorType:
         from ...tensor import Tensor
 
         op_device = get_two_operand_op_device(x1, x2, device)
-        a1, a2 = to_xp_array(x1, device=op_device), to_xp_array(x2, device=op_device)
+        a1, a2 = to_tensordata(x1, device=op_device), to_tensordata(
+            x2, device=op_device
+        )
         y = op(a1, a2, device=op_device, **kwds)
 
         if in_place and isinstance(x1, Tensor):
@@ -79,7 +79,8 @@ def create_2in_1out(
                 x1.data = y.data
                 return x1
             else:
-                x1.data = y
+                #! y could be an ArrayLike, so we convert it to a TensorData
+                x1.data = to_tensordata(y)
                 return x1
 
         y_requires_grad, prev = get_requires_grad_and_prev(x1, x2)
@@ -95,6 +96,10 @@ def create_2in_1out(
                 requires_grad=y_requires_grad and requires_grad,
             )
         if diff is None:
+            if y_requires_grad and requires_grad:
+                raise RuntimeError(
+                    "Y is differentiable, but no differentiation function is given."
+                )
             return y
         else:
             if y.requires_grad:
@@ -106,11 +111,11 @@ def create_2in_1out(
                     if isinstance(x1, Tensor) and x1.requires_grad:
                         if x1.grad is None:
                             x1.zeros_grad()
-                        x1.grad += y.grad * dx1()  # type: ignore
+                        x1.grad += y.grad * dx1()  # type: ignore (y.grad cannot be None)
                     if isinstance(x2, Tensor) and x2.requires_grad:
                         if x2.grad is None:
                             x2.zeros_grad()
-                        x2.grad += y.grad * dx2()  # type: ignore
+                        x2.grad += y.grad * dx2()  # type: ignore (y.grad cannot be None)
 
                 y.backward = backward
             return y
@@ -118,17 +123,15 @@ def create_2in_1out(
     return func
 
 
-def create_1in_1out(
-    op: cop_1in_1out_pro, diff: Optional[cdiff_1in_1out_pro]
-) -> cfunc_1in_1out_pro:
+def create_1in_1out(op: UnaryOp, diff: UnaryDiff | None) -> UnaryFunc:
     def func(
-        x: OperandLike,
+        x: TensorLike,
         *,
-        device: Optional[DeviceLike] = None,
+        device: Device | None = None,
         in_place: bool = False,
         requires_grad: bool = True,
         **kwds: Any,
-    ) -> TensorLike:
+    ) -> TensorType:
         from ...tensor import Tensor
 
         if device is None:
@@ -136,13 +139,14 @@ def create_1in_1out(
         else:
             device_op = device
 
-        a = to_xp_array(x, device=device_op)
+        a = to_tensordata(x, device=device_op)
         y = op(a, device=device_op, **kwds)
 
         y_requires_grad = False
         if isinstance(x, Tensor):
             if in_place:
-                x.data = y
+                #! y is a TensorLike, so we convert it to a TensorData
+                x.data = to_tensordata(y)
                 return x
             y_requires_grad = x.requires_grad
 
@@ -158,6 +162,10 @@ def create_1in_1out(
                 requires_grad=y_requires_grad and requires_grad,
             )
         if diff is None:
+            if y_requires_grad and requires_grad:
+                raise RuntimeError(
+                    "Y is differentiable, but no differentiation function is given."
+                )
             return y
         else:
             if y.requires_grad:
@@ -169,7 +177,7 @@ def create_1in_1out(
                     if isinstance(x, Tensor) and x.requires_grad:
                         if x.grad is None:
                             x.zeros_grad()
-                        x.grad += y.grad * dx()  # type: ignore
+                        x.grad += y.grad * dx()  # type: ignore (y.grad cannot be None)
 
                 y.backward = backward
             return y
@@ -178,20 +186,20 @@ def create_1in_1out(
 
 
 def wrapper_2in_1out(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
     func_name: str,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[NDArrayLikeBool, bool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     """Wrapper for two-inputs-one-output functions.
 
     If the device parameter is None, the result's device adheres to the operands. However, if it is None, both operands are converted to the given device, resulting in a tensor of given device.
@@ -200,7 +208,7 @@ def wrapper_2in_1out(
     from ...tensor import Tensor
 
     op_device = get_two_operand_op_device(x1, x2, device)
-    a1, a2 = to_xp_array(x1, op_device), to_xp_array(x2, op_device)
+    a1, a2 = to_tensordata(x1, op_device), to_tensordata(x2, op_device)
 
     if op_device == "cpu":
         kwds = {
@@ -228,19 +236,19 @@ def wrapper_2in_1out(
 
 
 def wrapper_1in_1out(
-    x: OperandLike,
+    x: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
     func_name: str,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[NDArrayLikeBool, bool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     from ...tensor import Tensor
 
     if device is None:
@@ -248,7 +256,7 @@ def wrapper_1in_1out(
     else:
         device_op = device
 
-    a = to_xp_array(x, device=device_op)
+    a = to_tensordata(x, device=device_op)
     if device_op == "cpu":
         y = getattr(np, func_name)(
             a,
@@ -279,19 +287,19 @@ def wrapper_1in_1out(
 
 
 def add(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[NDArrayLikeBool, bool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,
@@ -308,19 +316,19 @@ def add(
 
 
 def subtract(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[NDArrayLikeBool, bool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,
@@ -337,19 +345,19 @@ def subtract(
 
 
 def multiply(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[NDArrayLikeBool, bool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,
@@ -366,18 +374,18 @@ def multiply(
 
 
 def matmul(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,
@@ -393,19 +401,19 @@ def matmul(
 
 
 def divide(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[NDArrayLikeBool, bool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,
@@ -422,19 +430,19 @@ def divide(
 
 
 def power(
-    x1: OperandLike,
-    x2: OperandLike,
+    x1: TensorLike,
+    x2: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[NDArrayLikeBool, bool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_2in_1out(
         x1,
         x2,
@@ -451,18 +459,18 @@ def power(
 
 
 def negative(
-    x: OperandLike,
+    x: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[NDArrayLikeBool, bool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_1in_1out(
         x,
         out=out,
@@ -478,18 +486,18 @@ def negative(
 
 
 def sign(
-    x: OperandLike,
+    x: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[NDArrayLikeBool, bool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_1in_1out(
         x,
         out=out,
@@ -505,18 +513,18 @@ def sign(
 
 
 def abs(
-    x: OperandLike,
+    x: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[NDArrayLikeBool, bool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_1in_1out(
         x,
         out=out,
@@ -532,20 +540,20 @@ def abs(
 
 
 def clip(
-    a: OperandLike,
-    a_min: OperandLike,
-    a_max: OperandLike,
+    a: TensorLike,
+    a_min: TensorLike,
+    a_max: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
     requires_grad: bool = False,
-    device: Optional[DeviceLike] = None,
-    where: Union[bool, NDArrayLikeBool] = True,
+    device: Device | None = None,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     from ...tensor import Tensor
 
     is_tensor_op = False
@@ -564,9 +572,9 @@ def clip(
         device_op = device
 
     arr_a, arr_min, arr_max = (
-        to_xp_array(a, device=device_op),
-        to_xp_array(a_min, device=device_op),
-        to_xp_array(a_max, device=device_op),
+        to_tensordata(a, device=device_op),
+        to_tensordata(a_min, device=device_op),
+        to_tensordata(a_max, device=device_op),
     )
     if device_op == "cpu":
         if out is None:
@@ -605,18 +613,18 @@ def clip(
 
 
 def exp(
-    x: OperandLike,
+    x: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[bool, NDArrayLikeBool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_1in_1out(
         x,
         out=out,
@@ -632,18 +640,18 @@ def exp(
 
 
 def sqrt(
-    x: OperandLike,
+    x: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[bool, NDArrayLikeBool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_1in_1out(
         x,
         out=out,
@@ -659,18 +667,18 @@ def sqrt(
 
 
 def log(
-    x: OperandLike,
+    x: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[bool, NDArrayLikeBool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_1in_1out(
         x,
         out=out,
@@ -686,18 +694,18 @@ def log(
 
 
 def square(
-    x: OperandLike,
+    x: TensorLike,
     /,
-    out: Optional[NDArrayLike] = None,
+    out: TensorData | None = None,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[bool, NDArrayLikeBool] = True,
+    where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
-    dtype: Optional[DTypeLike] = None,
+    dtype: DTypeLike | None = None,
     subok: bool = True,
-) -> TensorLike:
+) -> TensorType:
     return wrapper_1in_1out(
         x,
         out=out,
@@ -718,17 +726,17 @@ def square(
 
 
 def mean(
-    x: OperandLike,
+    x: TensorLike,
     /,
-    axis: Optional[AxisLike] = None,
-    dtype: Optional[DTypeLike] = None,
-    out: Optional[NDArrayLike] = None,
+    axis: Axis | None = None,
+    dtype: DTypeLike | None = None,
+    out: TensorData | None = None,
     keepdims: bool = False,
     *,
-    device: Optional[DeviceLike] = None,
+    device: Device | None = None,
     in_place: bool = False,
-    where: Union[bool, NDArrayLikeBool] = True,
-) -> TensorLike:
+    where: TensorDataBool | bool = True,
+) -> TensorType:
     from ...tensor import Tensor
 
     if device is None:
@@ -736,7 +744,7 @@ def mean(
     else:
         device_op = device
 
-    a = to_xp_array(x, device=device_op)
+    a = to_tensordata(x, device=device_op)
     if device_op == "cpu":
         y = np.mean(
             a,

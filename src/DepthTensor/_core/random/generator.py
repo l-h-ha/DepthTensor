@@ -2,7 +2,7 @@ from typing import Optional, overload, Any
 
 from numpy import random
 
-from ...typing import DTypeLike, TensorLike, AxisLike, int64, DeviceLike
+from ...typing import DTypeLike, TensorType, Axis, int64, Device
 
 from ..exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG
 
@@ -21,20 +21,20 @@ _RNG = np.random.default_rng()
 
 
 @overload
-def rand(*, device: DeviceLike = "cpu", requires_grad: bool = False) -> TensorLike: ...
+def rand(*, device: Device = "cpu", requires_grad: bool = False) -> TensorType: ...
 @overload
 def rand(
     *d: int,
-    dtype: Optional[DTypeLike] = None,
-    device: DeviceLike = "cpu",
-    requires_grad: bool = False
-) -> TensorLike: ...
+    dtype: DTypeLike | None = None,
+    device: Device = "cpu",
+    requires_grad: bool = False,
+) -> TensorType: ...
 def rand(
     *d: int,
-    dtype: Optional[DTypeLike] = None,
-    device: DeviceLike = "cpu",
-    requires_grad: bool = False
-) -> TensorLike:
+    dtype: DTypeLike | None = None,
+    device: Device = "cpu",
+    requires_grad: bool = False,
+) -> TensorType:
     from ...tensor import Tensor
 
     if device == "cpu":
@@ -54,20 +54,22 @@ def rand(
 
 
 @overload
-def randn(*, device: DeviceLike = "cpu", requires_grad: bool = False) -> TensorLike: ...
+def randn(*, device: Device = "cpu", requires_grad: bool = False) -> TensorType: ...
 @overload
 def randn(
     *d: int,
-    dtype: Optional[DTypeLike] = None,
-    device: DeviceLike = "cpu",
-    requires_grad: bool = False
-) -> TensorLike: ...
+    dtype: DTypeLike | None = None,
+    device: Device = "cpu",
+    requires_grad: bool = False,
+) -> TensorType: ...
+
+
 def randn(
     *d: int,
-    dtype: Optional[DTypeLike] = None,
-    device: DeviceLike = "cpu",
-    requires_grad: bool = False
-) -> TensorLike:
+    dtype: DTypeLike | None = None,
+    device: Device = "cpu",
+    requires_grad: bool = False,
+) -> TensorType:
     from ...tensor import Tensor
 
     if device == "cpu":
@@ -88,12 +90,12 @@ def randn(
 
 def randint(
     low: int,
-    high: Optional[int] = None,
-    size: Optional[AxisLike] = None,
+    high: int | None = None,
+    size: Axis | None = None,
     dtype: Any = int64,
-    device: DeviceLike = "cpu",
+    device: Device = "cpu",
     requires_grad: bool = False,
-) -> TensorLike:
+) -> TensorType:
     from ...tensor import Tensor
 
     if device == "cpu":
@@ -108,10 +110,10 @@ def randint(
 def uniform(
     low: float = 0.0,
     high: float = 1.0,
-    size: Optional[AxisLike] = None,
+    size: Axis | None = None,
     *,
-    device: DeviceLike = "cpu",
-    requires_grad: bool = False
+    device: Device = "cpu",
+    requires_grad: bool = False,
 ):
     from ...tensor import Tensor
 
