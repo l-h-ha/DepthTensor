@@ -65,7 +65,12 @@ class BinaryOp(Protocol):
 
 class BinaryDiff(Protocol):
     def __call__(
-        self, result: "Tensor", x1: TensorData, x2: TensorData, **kwds: Any
+        self,
+        result: "Tensor",
+        x1: TensorData,
+        x2: TensorData,
+        device: Device,
+        **kwds: Any,
     ) -> tuple[Callable[[], TensorData], Callable[[], TensorData]]: ...
 
 
@@ -91,5 +96,5 @@ class UnaryOp(Protocol):
 
 class UnaryDiff(Protocol):
     def __call__(
-        self, result: "Tensor", x: TensorData, **kwds: Any
+        self, result: "Tensor", x: TensorData, device: Device, **kwds: Any
     ) -> Callable[[], TensorData]: ...

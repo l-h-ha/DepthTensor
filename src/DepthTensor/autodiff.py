@@ -59,6 +59,13 @@ def differentiate(tensor: Tensor, grad: TensorData | None = None) -> list[Tensor
         if grad is not None:
             _grad_check(grad, tensor)
             tensor.grad += grad
+        else:
+            if tensor.device == "gpu":
+                if cp is None:
+                    raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+                tensor.grad = cp.ones(tensor.shape, tensor.dtype)
+            elif tensor.device == "cpu":
+                tensor.grad = np.ones(tensor.shape, tensor.dtype)
 
     for t in reversed(topo):
         if t.backward is None:

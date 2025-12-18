@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.3] - 2025-12-18
+
+### Fixed
+ 
+- Fixed a bug where differentiating tensors does not automatically initialize the gradients of them.
+
+- Fixed a bug where the `max()` function errors due to the default `initial` argument being invalid.
+
+### Changed
+
+- Custom binary differentiation functions now require explicit definition of the `device` argument.
+
 ## [2.4.2] - 2025-12-14
 
 ### Fixed

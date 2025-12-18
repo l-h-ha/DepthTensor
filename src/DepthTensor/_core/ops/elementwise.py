@@ -105,7 +105,7 @@ def create_2in_1out(op: BinaryOp, diff: BinaryDiff | None) -> BinaryFunc:
             if y.requires_grad:
                 if y.grad is None:
                     y.zeros_grad()
-                dx1, dx2 = diff(y, a1, a2, **kwds)
+                dx1, dx2 = diff(y, a1, a2, device=op_device, **kwds)
 
                 def backward() -> None:
                     if isinstance(x1, Tensor) and x1.requires_grad:
@@ -171,7 +171,7 @@ def create_1in_1out(op: UnaryOp, diff: UnaryDiff | None) -> UnaryFunc:
             if y.requires_grad:
                 if y.grad is None:
                     y.zeros_grad()
-                dx = diff(y, a, **kwds)
+                dx = diff(y, a, device=device_op, **kwds)
 
                 def backward() -> None:
                     if isinstance(x, Tensor) and x.requires_grad:

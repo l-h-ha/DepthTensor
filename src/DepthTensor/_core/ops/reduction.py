@@ -90,9 +90,12 @@ def max(
 
     arr = to_tensordata(a, device=device_op)
     if device_op == "cpu":
-        y = np.max(
-            arr, axis=axis, out=out, keepdims=keepdims, initial=initial, where=where
-        )
+        kwargs = {"axis": axis, "out": out, "keepdims": keepdims, "where": where}
+
+        if initial is not _NoValue:
+            kwargs["initial"] = initial
+
+        y = np.max(arr, **kwargs)
     else:
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
