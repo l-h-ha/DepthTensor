@@ -102,7 +102,8 @@ Requirements:
 ### 4.1. Bash
 
 ```bash
-git clone https://github.com/YourUsername/DepthTensor.git
+git clone https://github.com/l-h-ha/DepthTensor.git
+cd DepthTensor
 pip install -e .
 ```
 
