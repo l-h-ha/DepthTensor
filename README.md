@@ -99,7 +99,15 @@ Requirements:
 - `numpy`
 - `cupy` (optional: for NVIDIA GPU acceleration)
 
-### Pip
+### 4.1. Bash
+
+```bash
+git clone https://github.com/l-h-ha/DepthTensor.git
+cd DepthTensor
+pip install -e .
+```
+
+### 4.2. Pip
 
 ```bash
 pip install depthtensor
