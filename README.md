@@ -83,8 +83,8 @@ for i in range(500):
     y.data -= lr * y.grad  # type: ignore
 
     # Zero grads
-    x.zeros_grad()
-    y.zeros_grad()
+    x.zero_grad()
+    y.zero_grad()
 
     if i % 10 == 0:
         print(loss.item())

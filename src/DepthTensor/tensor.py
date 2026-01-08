@@ -2,8 +2,6 @@ from __future__ import annotations
 from typing import Any, Callable, Iterator
 
 from .typing import (
-    ArrayLike,
-    ScalarLike,
     TensorData,
     DTypeLike,
     Order,
@@ -29,15 +27,6 @@ from ._core import (
     clip,
     abs,
     mean,
-    # * diff (elementwise)
-    add_diff,
-    subtract_diff,
-    multiply_diff,
-    matmul_diff,
-    divide_diff,
-    power_diff,
-    abs_diff,
-    mean_diff,
     # * comparison
     equal,
     not_equal,
@@ -66,41 +55,15 @@ _NoValue = object()
 ###
 
 
-def _wrapper_2in_1out(
-    y: Tensor,
-    diff_func: Callable[[Tensor, TensorLike, TensorLike], Tensor],
-    x1: TensorLike,
-    x2: TensorLike,
-    record_op: bool = True,
-) -> Tensor:
-    if record_op:
-        return diff_func(y, x1, x2)
-    return y
+def infer_differentiation_status(a: Tensor, b: TensorLike) -> bool:
+    if isinstance(b, Tensor):
+        return a.requires_grad or b.requires_grad
+    return a.requires_grad
 
-
-def _wrapper_1in_1out(
-    y: Tensor,
-    diff_func: Callable,
-    x: TensorLike,
-    record_op: bool = True,
-    **kwargs: Any,
-):
-    if record_op:
-        return diff_func(y, x, **kwargs)
-    return y
-
-
-allowed_dtype_kind = "uifb"
 
 ###
 ###
 ###
-
-
-def is_list_of_type(list_obj, type_obj) -> bool:
-    if not isinstance(list_obj, list):
-        return False
-    return all(isinstance(x, type_obj) for x in list_obj)
 
 
 class Tensor:
@@ -118,6 +81,7 @@ class Tensor:
         device: Device | None = None,
         prev: tuple = (),
         requires_grad: bool = False,
+        name: str = "",
     ) -> None:
         # Device init
         if device is None:
@@ -146,8 +110,13 @@ class Tensor:
         self.requires_grad = requires_grad
         self.backward = None
         self.grad = None
+        self.name = name
 
-    def zeros_grad(self) -> TensorData:
+    def zero_grad(self) -> TensorData:
+        if not self.requires_grad:
+            raise RuntimeError(
+                "Attempted to zero-gradient initialize an undifferentiable tensor."
+            )
         if self.device == "cpu":
             grad = np.zeros_like(self.data)
         else:
@@ -249,6 +218,40 @@ class Tensor:
     def is_gpu(self) -> bool:
         return self.device == "gpu"
 
+    def set_name(self, name: str) -> Tensor:
+        self.name = name
+        return self
+
+    def transpose(self, axes: Shape | None) -> Tensor:
+        y = Tensor(
+            self.data.transpose(axes),
+            dtype=self.dtype,
+            device=self.device,
+            requires_grad=self.requires_grad,
+        )
+        if y.requires_grad:
+
+            def backward() -> None:
+                if y.grad is None:
+                    y.zero_grad()
+                if self.grad is None:
+                    self.zero_grad()
+
+                if axes is None:
+                    self.grad += y.grad.transpose(None)  # type: ignore
+                else:
+                    if self.is_cpu():
+                        inverse_axes = np.argsort(axes)
+                    else:
+                        if cp is None:
+                            raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+                        inverse_axes = cp.argsort(axes)
+                    self.grad += y.grad.transpose(inverse_axes)  # type: ignore
+
+            y.prev = (self,)
+            y.backward = backward
+        return y
+
     ###
     ### Property
     ###
@@ -318,21 +321,16 @@ class Tensor:
         in_place: bool = False,
         where: TensorDataBool | bool = True,
     ) -> Tensor:
-        return _wrapper_1in_1out(
-            mean(
-                self,
-                axis=axis,
-                dtype=dtype,
-                out=out,
-                keepdims=keepdims,
-                device=device,
-                in_place=in_place,
-                where=where,
-            ),
-            mean_diff,
+        return mean(
             self,
             axis=axis,
+            dtype=dtype,
+            out=out,
             keepdims=keepdims,
+            device=device,
+            in_place=in_place,
+            where=where,
+            differentiate=self.requires_grad,
         )
 
     ###
@@ -419,14 +417,10 @@ class Tensor:
     ###
 
     def __add__(self, t: TensorLike) -> Tensor:
-        return _wrapper_2in_1out(
-            y=add(self, t), diff_func=add_diff, x1=self, x2=t, record_op=True
-        )
+        return add(self, t, differentiate=infer_differentiation_status(self, t))
 
     def __radd__(self, t: TensorLike) -> Tensor:
-        return _wrapper_2in_1out(
-            y=add(t, self), diff_func=add_diff, x1=t, x2=self, record_op=True
-        )
+        return add(t, self, differentiate=infer_differentiation_status(self, t))
 
     def __iadd__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
@@ -436,14 +430,10 @@ class Tensor:
         return add(self, t, in_place=True)
 
     def __sub__(self, t: TensorLike) -> Tensor:
-        return _wrapper_2in_1out(
-            y=subtract(self, t), diff_func=subtract_diff, x1=self, x2=t, record_op=True
-        )
+        return subtract(self, t, differentiate=infer_differentiation_status(self, t))
 
     def __rsub__(self, t: TensorLike) -> Tensor:
-        return _wrapper_2in_1out(
-            y=subtract(t, self), diff_func=subtract_diff, x1=t, x2=self, record_op=True
-        )
+        return subtract(t, self, differentiate=infer_differentiation_status(self, t))
 
     def __isub__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
@@ -453,14 +443,10 @@ class Tensor:
         return subtract(self, t, in_place=True)
 
     def __mul__(self, t: TensorLike) -> Tensor:
-        return _wrapper_2in_1out(
-            y=multiply(self, t), diff_func=multiply_diff, x1=self, x2=t, record_op=True
-        )
+        return multiply(self, t, differentiate=infer_differentiation_status(self, t))
 
     def __rmul__(self, t: TensorLike) -> Tensor:
-        return _wrapper_2in_1out(
-            y=multiply(t, self), diff_func=multiply_diff, x1=t, x2=self, record_op=True
-        )
+        return multiply(t, self, differentiate=infer_differentiation_status(self, t))
 
     def __imul__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
@@ -470,14 +456,10 @@ class Tensor:
         return multiply(self, t, in_place=True)
 
     def __matmul__(self, t: TensorLike) -> Tensor:
-        return _wrapper_2in_1out(
-            y=matmul(self, t), diff_func=matmul_diff, x1=self, x2=t, record_op=True
-        )
+        return matmul(self, t, differentiate=infer_differentiation_status(self, t))
 
     def __rmatmul__(self, t: TensorLike) -> Tensor:
-        return _wrapper_2in_1out(
-            y=matmul(t, self), diff_func=matmul_diff, x1=t, x2=self, record_op=True
-        )
+        return matmul(t, self, differentiate=infer_differentiation_status(self, t))
 
     def __imatmul__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
@@ -487,14 +469,10 @@ class Tensor:
         return matmul(self, t, in_place=True)
 
     def __truediv__(self, t: TensorLike) -> Tensor:
-        return _wrapper_2in_1out(
-            y=divide(self, t), diff_func=divide_diff, x1=self, x2=t, record_op=True
-        )
+        return divide(self, t, differentiate=infer_differentiation_status(self, t))
 
     def __rtruediv__(self, t: TensorLike) -> Tensor:
-        return _wrapper_2in_1out(
-            y=divide(t, self), diff_func=divide_diff, x1=t, x2=self, record_op=True
-        )
+        return divide(t, self, differentiate=infer_differentiation_status(self, t))
 
     def __itruediv__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
@@ -504,9 +482,7 @@ class Tensor:
         return divide(self, t, in_place=True)
 
     def __pow__(self, t: TensorLike) -> Tensor:
-        return _wrapper_2in_1out(
-            y=power(self, t), diff_func=power_diff, x1=self, x2=t, record_op=True
-        )
+        return power(self, t, differentiate=infer_differentiation_status(self, t))
 
     def __ipow__(self, t: TensorLike) -> Tensor:
         if self.requires_grad:
@@ -545,7 +521,24 @@ class Tensor:
     ###
 
     def __getitem__(self, index) -> Any:
-        return self.data[index]
+        y = Tensor(
+            self.data[index],
+            dtype=self.dtype,
+            device=self.device,
+            requires_grad=self.requires_grad,
+        )
+        if y.requires_grad:
+
+            def backward() -> None:
+                if y.grad is None:
+                    y.zero_grad()
+                if self.grad is None:
+                    self.zero_grad()
+                self.grad[index] += y.grad  # type: ignore
+                y.prev = (self,)
+
+            y.backward = backward
+        return y
 
     def __setitem__(self, index, value) -> Any:
         if self.requires_grad:
@@ -558,7 +551,7 @@ class Tensor:
         return iter(self.data)
 
     def __repr__(self) -> str:
-        return f"Tensor({self.data}, device={self.device})"
+        return f"Tensor({self.data}, device={self.device}{f", name={self.name}" if self.name != "" else ""})"
 
     def __hash__(self) -> int:
         return id(self)

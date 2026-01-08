@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-01-08
+
+### Added
+
+- A ```name``` attribute in tensor objects assisting in debugging.
+
+- Added a method ```set_name```, which returns the tensor object itself and sets the object's ```name``` attribute.
+
+- Added a differentiable method ```transpose`` which tranposes the tensor object.
+
+- The slicing operation can now be differentiable.
+
+### Changed
+
+- Changed the method ```Tensor.zeros_grad()``` to ```Tensor.zero_grad()``` as it is more conventional.
+
+- Calling ```Tensor.zero_grad()``` now raises a run-time error for undifferentiable tensors.
+
+- Operations, like ```Add, Subtract, or Multiply``` now behave like objects inheriting from the ```Function``` class.
+
+### Removed
+
+- Removed unary-related and binary-related protocols for creating custom differentiable functions, which now works via the class `Function`.
+
 ## [2.4.3] - 2025-12-18
 
 ### Fixed
