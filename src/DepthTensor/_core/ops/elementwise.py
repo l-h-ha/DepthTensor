@@ -45,17 +45,11 @@ def get_requires_grad_and_prev(x1: TensorLike, x2: TensorLike):
     from ...tensor import Tensor
 
     y_requires_grad = False
-    prev = ()
     if isinstance(x1, Tensor):
         y_requires_grad = x1.requires_grad
-        prev = (x1,)
     if isinstance(x2, Tensor):
         y_requires_grad = y_requires_grad or x2.requires_grad
-        if len(prev) == 1:
-            prev = (x1, x2)
-        else:
-            prev = (x2,)
-    return y_requires_grad, prev
+    return y_requires_grad
 
 
 def wrapper_2in_1out(
@@ -104,8 +98,8 @@ def wrapper_2in_1out(
         x1.data = y
         return x1
 
-    requires_grad, prev = get_requires_grad_and_prev(x1, x2)
-    return Tensor(y, prev=prev, requires_grad=requires_grad)
+    requires_grad = get_requires_grad_and_prev(x1, x2)
+    return Tensor(y, requires_grad=requires_grad)
 
 
 def wrapper_1in_1out(
@@ -176,23 +170,25 @@ def wrapper_diff_2in_1out(
             x2, device=device
         )
 
-        prev = []
         if isinstance(x1, Tensor) and x1.requires_grad:
             if x1.grad is None:
                 x1.zero_grad()
             x1.grad += callback_x1(y_grad, x1.shape, device, x1_data, x2_data).astype(
                 x1.dtype
             )
-            prev.append(x1)
         if isinstance(x2, Tensor) and x2.requires_grad:
             if x2.grad is None:
                 x2.zero_grad()
             x2.grad += callback_x2(y_grad, x2.shape, device, x1_data, x2_data).astype(
                 x2.dtype
             )
-            prev.append(x2)
-        y.prev = tuple(prev)
 
+    prev = []
+    if isinstance(x1, Tensor) and x1.requires_grad:
+        prev.append(x1)
+    if isinstance(x2, Tensor) and x2.requires_grad:
+        prev.append(x2)
+    y.prev = tuple(prev)
     y.backward = backward
 
 
@@ -212,8 +208,9 @@ def wrapper_diff_1in_1out(y: TensorType, x1: TensorLike, callback_x1: Callable) 
             if x1.grad is None:
                 x1.zero_grad()
             x1.grad += callback_x1(result_grad, x1.shape, x1.device, _x)
-            y.prev = (x1,)
 
+    if isinstance(x1, Tensor) and x1.requires_grad:
+        y.prev = (x1,)
     y.backward = backward
 
 
@@ -882,9 +879,12 @@ class mean_cls(Function):
                     y.zero_grad()
                 if x.grad is None:
                     x.zero_grad()
-                print(x)
                 x.grad += callback_x1(y.grad, x.shape, y.device)
 
+        from ...tensor import Tensor
+
+        if isinstance(x, Tensor) and x.requires_grad:
+            y.prev = (x,)
         y.backward = backward
 
     def __call__(
@@ -929,7 +929,7 @@ class mean_cls(Function):
                 return x
             requires_grad = x.requires_grad
 
-            y = Tensor(y, prev=(x,), requires_grad=requires_grad)
+            y = Tensor(y, requires_grad=requires_grad)
             if differentiate:
                 self.link(y, x, axis, keepdims)
         else:

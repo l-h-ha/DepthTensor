@@ -6,4 +6,4 @@ from ._core.ops import *
 from ._core.exceptions import *
 from ._core import random
 
-__version__ = "2.5.0"
+__version__ = "2.5.1"
