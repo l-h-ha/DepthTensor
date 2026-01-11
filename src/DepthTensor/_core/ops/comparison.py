@@ -120,9 +120,12 @@ def wrapper_2in_1out(
 ) -> TensorType:
     from ...tensor import Tensor
 
-    op_device = get_two_operand_op_device(x1, x2, device)
+    x1_is_tensor, x2_is_tensor = isinstance(x1, Tensor), isinstance(x2, Tensor)
+    op_device = get_two_operand_op_device(x1, x2, x1_is_tensor, x2_is_tensor, device)
 
-    x1, x2 = to_tensordata(x1, device=op_device), to_tensordata(x2, device=op_device)
+    x1 = to_tensordata(x1, device=op_device) if not x1_is_tensor else x1.data
+    x2 = to_tensordata(x2, device=op_device) if not x2_is_tensor else x2.data
+
     if op_device == "cpu":
         y = getattr(np, func_name)(
             x1,

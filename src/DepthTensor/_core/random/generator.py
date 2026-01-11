@@ -2,7 +2,7 @@ from typing import Optional, overload, Any
 
 from numpy import random
 
-from ...typing import DTypeLike, TensorType, Axis, int64, Device
+from ...typing import DTypeLike, TensorType, Axis, int64, Device, float32
 
 from ..exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG
 
@@ -113,16 +113,17 @@ def uniform(
     size: Axis | None = None,
     *,
     device: Device = "cpu",
+    dtype: DTypeLike = float32,
     requires_grad: bool = False,
 ):
     from ...tensor import Tensor
 
     if device == "cpu":
-        y = random.uniform(low=low, high=high, size=size)
+        y = random.uniform(low=low, high=high, size=size).astype(dtype)
     else:
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.random.uniform(low=low, high=high, size=size)
+        y = cp.random.uniform(low=low, high=high, size=size, dtype=dtype)
     return Tensor(y, requires_grad=requires_grad)
 
 

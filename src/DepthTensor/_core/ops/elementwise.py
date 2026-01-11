@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Callable
 
 from ...typing import (
     TensorType,
@@ -41,13 +41,15 @@ except (ImportError, ModuleNotFoundError):
 ###
 
 
-def get_requires_grad_and_prev(x1: TensorLike, x2: TensorLike):
+def get_requires_grad_and_prev(
+    x1: TensorLike, x2: TensorLike, x1_is_tensor: bool, x2_is_tensor: bool
+):
     from ...tensor import Tensor
 
     y_requires_grad = False
-    if isinstance(x1, Tensor):
+    if x1_is_tensor:
         y_requires_grad = x1.requires_grad
-    if isinstance(x2, Tensor):
+    if x2_is_tensor:
         y_requires_grad = y_requires_grad or x2.requires_grad
     return y_requires_grad
 
@@ -74,8 +76,11 @@ def wrapper_2in_1out(
 
     from ...tensor import Tensor
 
-    op_device = get_two_operand_op_device(x1, x2, device)
-    a1, a2 = to_tensordata(x1, op_device), to_tensordata(x2, op_device)
+    x1_is_tensor, x2_is_tensor = isinstance(x1, Tensor), isinstance(x2, Tensor)
+
+    op_device = get_two_operand_op_device(x1, x2, x1_is_tensor, x2_is_tensor, device)
+    a1 = to_tensordata(x1, op_device) if not x1_is_tensor else x1.data
+    a2 = to_tensordata(x2, op_device) if not x2_is_tensor else x2.data
 
     if op_device == "cpu":
         kwargs = {
@@ -94,11 +99,11 @@ def wrapper_2in_1out(
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = getattr(cp, func_name)(a1, a2, out=out, dtype=dtype, casting=casting)
 
-    if in_place and isinstance(x1, Tensor):
+    if in_place and x1_is_tensor:
         x1.data = y
         return x1
 
-    requires_grad = get_requires_grad_and_prev(x1, x2)
+    requires_grad = get_requires_grad_and_prev(x1, x2, x1_is_tensor, x2_is_tensor)
     return Tensor(y, requires_grad=requires_grad)
 
 
@@ -160,33 +165,31 @@ def wrapper_diff_2in_1out(
 
     from ...tensor import Tensor
 
+    x1_is_tensor, x2_is_tensor = isinstance(x1, Tensor), isinstance(x2, Tensor)
+
     def backward() -> None:
         if y.grad is None:
             y.zero_grad()
 
         y_grad: TensorData = y.grad  # type: ignore (y.grad cannot be None)
-        device = get_two_operand_op_device(x1, x2, None)
+        device = get_two_operand_op_device(x1, x2, x1_is_tensor, x2_is_tensor, None)
         x1_data, x2_data = to_tensordata(x1, device=device), to_tensordata(
             x2, device=device
         )
 
-        if isinstance(x1, Tensor) and x1.requires_grad:
+        if x1_is_tensor and x1.requires_grad:
             if x1.grad is None:
                 x1.zero_grad()
-            x1.grad += callback_x1(y_grad, x1.shape, device, x1_data, x2_data).astype(
-                x1.dtype
-            )
-        if isinstance(x2, Tensor) and x2.requires_grad:
+            x1.grad += callback_x1(y_grad, x1.shape, device, x1_data, x2_data)
+        if x2_is_tensor and x2.requires_grad:
             if x2.grad is None:
                 x2.zero_grad()
-            x2.grad += callback_x2(y_grad, x2.shape, device, x1_data, x2_data).astype(
-                x2.dtype
-            )
+            x2.grad += callback_x2(y_grad, x2.shape, device, x1_data, x2_data)
 
     prev = []
-    if isinstance(x1, Tensor) and x1.requires_grad:
+    if x1_is_tensor and x1.requires_grad:
         prev.append(x1)
-    if isinstance(x2, Tensor) and x2.requires_grad:
+    if x2_is_tensor and x2.requires_grad:
         prev.append(x2)
     y.prev = tuple(prev)
     y.backward = backward

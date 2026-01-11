@@ -147,19 +147,21 @@ def get_complement_device(device: Device) -> Device:
 
 
 def get_two_operand_op_device(
-    x1: TensorLike, x2: TensorLike, device: Device | None
+    x1: TensorLike,
+    x2: TensorLike,
+    x1_is_tensor: bool,
+    x2_is_tensor: bool,
+    device: Device | None,
 ) -> Device:
     if device is not None:
         return device
 
-    from ..tensor import Tensor
-
-    if isinstance(x1, Tensor) and isinstance(x2, Tensor):
+    if x1_is_tensor and x2_is_tensor:
         if x1.device != x2.device:
             raise DeviceMismatch(DEVICE_MISMATCH_MSG)
         op_device = x1.device
     else:
-        if isinstance(x1, Tensor):
+        if x1_is_tensor:
             op_device = x1.device
             if get_device(x2) != x1.device and not isinstance(
                 x2,
@@ -174,7 +176,7 @@ def get_two_operand_op_device(
                 raise DeviceMismatch(
                     f"There is a incompatibility in datatypes between the two operands of types Tensor and {type(x2)}. Expected datatype of device: {x1.device} {"(CuPy arrays, GPU Tensors)" if x1.device == "gpu" else "(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)"}, got datatype of type: {type(x2)}."
                 )
-        elif isinstance(x2, Tensor):
+        elif x2_is_tensor:
             op_device = x2.device
             if get_device(x1) != x2.device and not isinstance(
                 x2,

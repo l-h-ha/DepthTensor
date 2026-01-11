@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-01-11
+
+### Fixed
+
+- Optimized the ```zero_grad``` method by filling the array (if already instantiated) instead of instantiating everytime.
+
+- Some internal functions are optimized by caching variables.
+
+
+### Changed
+
+- ```dt.random.uniform()``` now accepts a ```dtype``` argument, which defaults to ```float32```.
+
+- Printing tensors now shows the ```requires_grad``` attribute for verbosity.
+
+
 ## [2.5.1] - 2026-01-10
 
 ### Fixed

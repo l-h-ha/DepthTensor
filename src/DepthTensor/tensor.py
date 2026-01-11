@@ -112,19 +112,21 @@ class Tensor:
         self.grad = None
         self.name = name
 
-    def zero_grad(self) -> TensorData:
+    def zero_grad(self) -> None:
         if not self.requires_grad:
             raise RuntimeError(
                 "Attempted to zero-gradient initialize an undifferentiable tensor."
             )
-        if self.device == "cpu":
-            grad = np.zeros_like(self.data)
+        if self.grad is None:
+            if self.device == "cpu":
+                grad = np.zeros_like(self.data)
+            else:
+                if cp is None:
+                    raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+                grad = cp.zeros_like(self.data)
+            self.grad = grad
         else:
-            if cp is None:
-                raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-            grad = cp.zeros_like(self.data)
-        self.grad = grad
-        return grad
+            self.grad.fill(0)
 
     ###
     ###
@@ -551,7 +553,7 @@ class Tensor:
         return iter(self.data)
 
     def __repr__(self) -> str:
-        return f"Tensor({self.data}, device={self.device}{f", name={self.name}" if self.name != "" else ""})"
+        return f"Tensor({self.data}, device={self.device}{f", name={self.name}" if self.name != "" else ""}, req_grad={self.requires_grad})"
 
     def __hash__(self) -> int:
         return id(self)
