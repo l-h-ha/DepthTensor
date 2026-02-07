@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "depthtensor"
-version = "2.6.0"
+version = "2.7.0"
 description = "A Hardware-Accelerated Tensor Computation and Autograd Engine"
 readme = "README.md"
 authors = [

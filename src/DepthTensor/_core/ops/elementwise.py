@@ -104,7 +104,7 @@ def wrapper_2in_1out(
         return x1
 
     requires_grad = get_requires_grad_and_prev(x1, x2, x1_is_tensor, x2_is_tensor)
-    return Tensor(y, requires_grad=requires_grad)
+    return Tensor._fast_init(y, device=op_device, requires_grad=requires_grad)
 
 
 def wrapper_1in_1out(
@@ -150,7 +150,7 @@ def wrapper_1in_1out(
             x.data = y
             return x
         requires_grad = x.requires_grad
-    return Tensor(y, requires_grad=requires_grad)
+    return Tensor._fast_init(y, device=device_op, requires_grad=requires_grad)
 
 
 def wrapper_diff_2in_1out(
@@ -205,7 +205,7 @@ def wrapper_diff_1in_1out(y: TensorType, x1: TensorLike, callback_x1: Callable) 
         if y.grad is None:
             y.zero_grad()
 
-        result_grad: TensorData = result.grad  # type: ignore
+        result_grad: TensorData = y.grad  # type: ignore
         _x = to_tensordata(x1)
         if isinstance(x1, Tensor) and x1.requires_grad:
             if x1.grad is None:
@@ -248,6 +248,37 @@ class add_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Add arguments element-wise.
+
+        Parameters
+        ----------
+        x1, x2 : TensorLike
+            The arrays to be added.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            The sum of x1 and x2, element-wise.
+        """
         y = wrapper_2in_1out(
             x1,
             x2,
@@ -295,6 +326,37 @@ class sub_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Subtract arguments, element-wise.
+
+        Parameters
+        ----------
+        x1, x2 : TensorLike
+            The arrays to be subtracted.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            The difference of x1 and x2, element-wise.
+        """
         y = wrapper_2in_1out(
             x1,
             x2,
@@ -339,6 +401,37 @@ class mul_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Multiply arguments element-wise.
+
+        Parameters
+        ----------
+        x1, x2 : TensorLike
+            Input arrays to be multiplied.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            The product of x1 and x2, element-wise.
+        """
         y = wrapper_2in_1out(
             x1,
             x2,
@@ -386,6 +479,35 @@ class matmul_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Matrix product of two arrays.
+
+        Parameters
+        ----------
+        x1, x2 : TensorLike
+            Input arrays.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            The matrix product of the inputs.
+        """
         # matmul does not support 'where'
         y = wrapper_2in_1out(
             x1,
@@ -432,6 +554,39 @@ class div_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Returns a true division of the inputs, element-wise.
+
+        Parameters
+        ----------
+        x1 : TensorLike
+            Dividend array.
+        x2 : TensorLike
+            Divisor array.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            This is a scalar if both x1 and x2 are scalars.
+        """
         y = wrapper_2in_1out(
             x1,
             x2,
@@ -480,6 +635,39 @@ class power_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        First array elements raised to powers from second array, element-wise.
+
+        Parameters
+        ----------
+        x1 : TensorLike
+            The bases.
+        x2 : TensorLike
+            The exponents.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            The bases in x1 raised to the exponents in x2.
+        """
         y = wrapper_2in_1out(
             x1,
             x2,
@@ -525,6 +713,37 @@ class negative_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Numerical negative, element-wise.
+
+        Parameters
+        ----------
+        x : TensorLike
+            Input array.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            Returned array or scalar: y = -x.
+        """
         y = wrapper_1in_1out(
             x,
             out=out,
@@ -565,6 +784,37 @@ class sign_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Returns an element-wise indication of the sign of a number.
+
+        Parameters
+        ----------
+        x : TensorLike
+            Input values.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            The sign of x.
+        """
         y = wrapper_1in_1out(
             x,
             out=out,
@@ -605,6 +855,37 @@ class abs_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Calculate the absolute value element-wise.
+
+        Parameters
+        ----------
+        x : TensorLike
+            Input array.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            An array containing the absolute value of each element in x.
+        """
         y = wrapper_1in_1out(
             x,
             out=out,
@@ -645,6 +926,37 @@ class exp_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Calculate the exponential of all elements in the input array.
+
+        Parameters
+        ----------
+        x : TensorLike
+            Input values.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            Output array, element-wise exponential of x.
+        """
         y = wrapper_1in_1out(
             x,
             out=out,
@@ -685,6 +997,38 @@ class sqrt_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Return the non-negative square-root of an array, element-wise.
+
+        Parameters
+        ----------
+        x : TensorLike
+            The values whose square-roots are required.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            An array of the same shape as x, containing the positive square-root
+            of each element in x.
+        """
         y = wrapper_1in_1out(
             x,
             out=out,
@@ -724,6 +1068,37 @@ class log_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Natural logarithm, element-wise.
+
+        Parameters
+        ----------
+        x : TensorLike
+            Input value.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            The natural logarithm of x, element-wise.
+        """
         y = wrapper_1in_1out(
             x,
             out=out,
@@ -763,6 +1138,37 @@ class square_cls(Function):
         subok: bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Return the element-wise square of the input.
+
+        Parameters
+        ----------
+        x : TensorLike
+            Input data.
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            Element-wise x*x, of the same shape and dtype as x.
+        """
         y = wrapper_1in_1out(
             x,
             out=out,
@@ -800,6 +1206,46 @@ def clip(
     dtype: DTypeLike | None = None,
     subok: bool = True,
 ) -> TensorType:
+    """
+    Clip (limit) the values in an array.
+
+    Given an interval, values outside the interval are clipped to the interval edges.
+    For example, if an interval of [0, 1] is specified, values smaller than 0 become 0,
+    and values larger than 1 become 1.
+
+    Parameters
+    ----------
+    a : TensorLike
+        Array containing elements to clip.
+    a_min : TensorLike
+        Minimum value. If None, clipping is not performed on lower interval edge.
+        Not more than one of `a_min` and `a_max` may be None.
+    a_max : TensorLike
+        Maximum value. If None, clipping is not performed on upper interval edge.
+        Not more than one of `a_min` and `a_max` may be None.
+    out : TensorData | None, optional
+        The results will be placed in this array.
+    requires_grad : bool, optional
+        Whether the result requires gradient computation.
+    device : Device | None, optional
+        The device to place the result on.
+    where : TensorDataBool | bool, optional
+        This condition is broadcast over the input.
+    casting : Casting, optional
+        Controls what kind of data casting may occur.
+    order : Order, optional
+        Controls the memory layout of the result.
+    dtype : DTypeLike | None, optional
+        Overrides the data type of the result.
+    subok : bool, optional
+        If True, then sub-classes will be passed-through.
+
+    Returns
+    -------
+    TensorType
+        An array with the elements of `a`, but where values < `a_min` are replaced with `a_min`,
+        and those > `a_max` with `a_max`.
+    """
     from ...tensor import Tensor
 
     is_tensor_op = False
@@ -850,7 +1296,7 @@ def clip(
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.clip(arr_a, arr_min, arr_max, out=out)
-    return Tensor(y, requires_grad=requires_grad)
+    return Tensor._fast_init(y, device=device_op, requires_grad=requires_grad)
 
 
 class mean_cls(Function):
@@ -904,6 +1350,36 @@ class mean_cls(Function):
         where: TensorDataBool | bool = True,
         differentiate: bool = False,
     ) -> TensorType:
+        """
+        Compute the arithmetic mean along the specified axis.
+
+        Parameters
+        ----------
+        x : TensorLike
+            Array containing numbers whose mean is desired.
+        axis : Axis | None, optional
+            Axis or axes along which the means are computed.
+        dtype : DTypeLike | None, optional
+            Type to use in computing the mean.
+        out : TensorData | None, optional
+            Alternate output array in which to place the result.
+        keepdims : bool, optional
+            If this is set to True, the axes which are reduced are left
+            in the result as dimensions with size one.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            Elements to include in the mean.
+        differentiate : bool, optional
+            Whether to link the result to the computation graph for autodiff.
+
+        Returns
+        -------
+        TensorType
+            A new array containing the mean values.
+        """
         op_device = device
         if device is None:
             op_device = get_device(x)
@@ -932,11 +1408,11 @@ class mean_cls(Function):
                 return x
             requires_grad = x.requires_grad
 
-            y = Tensor(y, requires_grad=requires_grad)
+            y = Tensor._fast_init(y, device=op_device, requires_grad=requires_grad)
             if differentiate:
                 self.link(y, x, axis, keepdims)
         else:
-            y = Tensor(y, requires_grad=requires_grad)
+            y = Tensor._fast_init(y, device=op_device, requires_grad=requires_grad)
         return y
 
 

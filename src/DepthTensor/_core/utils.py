@@ -22,6 +22,28 @@ except (ImportError, ModuleNotFoundError):
 
 
 def tensordata_to_device(obj: TensorData, device: Device) -> TensorData:
+    """
+    Move the tensor data to the specified device.
+
+    Parameters
+    ----------
+    obj : TensorData
+        The data to move (numpy or cupy array).
+    device : Device
+        The target device ('cpu' or 'gpu').
+
+    Returns
+    -------
+    TensorData
+        The data on the target device.
+
+    Raises
+    ------
+    CuPyNotFound
+        If the target device is 'gpu' and CuPy is not available.
+    RuntimeError
+        If the input object is not a valid tensor data type.
+    """
     if isinstance(obj, np.ndarray):
         if device == "cpu":
             return obj
@@ -62,6 +84,20 @@ def unbroadcast_tensordata_to_shape(
 
     Mathematically, since A influences every components of C, to get the gradient, we would have to sum every connections from
     A to C, which this function generalizes for every cases.
+
+    Parameters
+    ----------
+    result : TensorData
+        The broadcasted data (gradient).
+    target_shape : tuple
+        The shape to unbroadcast to.
+    device : Device
+        The device where the operation takes place.
+
+    Returns
+    -------
+    Any
+        The unbroadcasted data.
     """
 
     result_shape = result.shape
@@ -99,12 +135,24 @@ def unbroadcast_tensordata_to_shape(
 
 def to_tensordata(a: TensorLike, device: Device | None = None) -> TensorData:
     """
-    Convert TensorLike to TensorData
+    Convert TensorLike to TensorData.
+
+    Parameters
+    ----------
+    a : TensorLike
+        Input data (Tensor, list, tuple, numpy array, cupy array).
+    device : Device | None, optional
+        Target device. If None, inferred from input.
+
+    Returns
+    -------
+    TensorData
+        Numpy or CuPy array.
     """
     from ..tensor import Tensor
 
     if not device:
-        device = get_device(device)
+        device = get_device(a)
 
     if isinstance(a, Tensor):
         y = a.data
@@ -125,6 +173,24 @@ def to_tensordata(a: TensorLike, device: Device | None = None) -> TensorData:
 
 
 def get_device(a: TensorLike) -> Device:
+    """
+    Get the device of a TensorLike object.
+
+    Parameters
+    ----------
+    a : TensorLike
+        Input object.
+
+    Returns
+    -------
+    Device
+        'cpu' or 'gpu'.
+
+    Raises
+    ------
+    RuntimeError
+        If the input type is invalid.
+    """
     from ..tensor import Tensor
 
     if isinstance(a, Tensor):
@@ -212,4 +278,7 @@ __all__ = [
     "unbroadcast_tensordata_to_shape",
     "to_tensordata",
     "get_two_operand_op_device",
+    "NoValue",
 ]
+
+NoValue = object()

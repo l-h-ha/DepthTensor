@@ -5,3 +5,7 @@
 src/DepthTensor.egg-info/
 build/
 dist/
+
+.gemini/
+
+GEMINI.md

@@ -29,6 +29,35 @@ def _grad_check(grad: TensorData, tensor: Tensor) -> None:
 
 
 def differentiate(tensor: Tensor, grad: TensorData | None = None) -> list[Tensor]:
+    """
+    Compute the gradients of the tensor with respect to its ancestors.
+
+    This function performs reverse-mode automatic differentiation (backpropagation).
+    It traverses the computation graph backwards from the given tensor and
+    computes the gradients for all tensors that require gradients.
+
+    Parameters
+    ----------
+    tensor : Tensor
+        The tensor to start the backward pass from.
+    grad : TensorData | None, optional
+        The gradient to seed the backward pass with. If None, it defaults to
+        ones with the same shape as `tensor`.
+
+    Returns
+    -------
+    list[Tensor]
+        A list of tensors in the computation graph in topological order (reversed).
+
+    Raises
+    ------
+    RuntimeError
+        If there is a mismatch in gradient device or type.
+    GradientComputationError
+        If a tensor in the graph is missing a backward function but requires gradients.
+    CuPyNotFound
+        If the device is 'gpu' and CuPy is not available.
+    """
     topo: list[Tensor] = []
     visited: set[Tensor] = set()
 

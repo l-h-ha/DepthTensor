@@ -36,6 +36,31 @@ def zeros_like(
     subok: bool = True,
     shape: Axis | None = None,
 ) -> TensorType:
+    """
+    Return an array of zeros with the same shape and type as a given array.
+
+    Parameters
+    ----------
+    a : TensorLike
+        The shape and data-type of `a` define these same attributes of the returned array.
+    device : Device | None, optional
+        The device to place the result on.
+    requires_grad : bool, optional
+        Whether the result requires gradient computation.
+    dtype : DTypeLike | None, optional
+        Overrides the data type of the result.
+    order : Order, optional
+        Overrides the memory layout of the result.
+    subok : bool, optional
+        If True, then sub-classes will be passed-through.
+    shape : Axis | None, optional
+        Overrides the shape of the result.
+
+    Returns
+    -------
+    TensorType
+        Array of zeros with the same shape and type as `a`.
+    """
     from ...tensor import Tensor
 
     if device is None:
@@ -49,7 +74,7 @@ def zeros_like(
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape)
-    return Tensor(y, requires_grad=requires_grad)
+    return Tensor._fast_init(y, device=device_op, requires_grad=requires_grad)
 
 
 def ones_like(
@@ -63,6 +88,31 @@ def ones_like(
     subok: bool = True,
     shape: Axis | None = None,
 ) -> TensorType:
+    """
+    Return an array of ones with the same shape and type as a given array.
+
+    Parameters
+    ----------
+    a : TensorLike
+        The shape and data-type of `a` define these same attributes of the returned array.
+    device : Device | None, optional
+        The device to place the result on.
+    requires_grad : bool, optional
+        Whether the result requires gradient computation.
+    dtype : DTypeLike | None, optional
+        Overrides the data type of the result.
+    order : Order, optional
+        Overrides the memory layout of the result.
+    subok : bool, optional
+        If True, then sub-classes will be passed-through.
+    shape : Axis | None, optional
+        Overrides the shape of the result.
+
+    Returns
+    -------
+    TensorType
+        Array of ones with the same shape and type as `a`.
+    """
     from ...tensor import Tensor
 
     if device is None:
@@ -76,7 +126,7 @@ def ones_like(
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape)
-    return Tensor(y, requires_grad=requires_grad)
+    return Tensor._fast_init(y, device=device_op, requires_grad=requires_grad)
 
 
 def zeros(
@@ -87,6 +137,28 @@ def zeros(
     device: Device = "cpu",
     requires_grad: bool = False,
 ) -> TensorType:
+    """
+    Return a new array of given shape and type, filled with zeros.
+
+    Parameters
+    ----------
+    shape : Shape
+        Shape of the new array.
+    dtype : DTypeLike, optional
+        The desired data-type for the array. Default is float.
+    order : {'C', 'F'}, optional
+        Whether to store multi-dimensional data in row-major (C-style)
+        or column-major (Fortran-style) order in memory.
+    device : Device, optional
+        The device to place the result on. Default is 'cpu'.
+    requires_grad : bool, optional
+        Whether the result requires gradient computation.
+
+    Returns
+    -------
+    TensorType
+        Array of zeros with the given shape, dtype, and order.
+    """
     from ...tensor import Tensor
 
     if device == "cpu":
@@ -95,7 +167,7 @@ def zeros(
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.zeros(shape=shape, dtype=dtype, order=order)
-    return Tensor(y, requires_grad=requires_grad)
+    return Tensor._fast_init(y, device=device, requires_grad=requires_grad)
 
 
 def ones(
@@ -106,6 +178,28 @@ def ones(
     device: Device = "cpu",
     requires_grad: bool = False,
 ) -> TensorType:
+    """
+    Return a new array of given shape and type, filled with ones.
+
+    Parameters
+    ----------
+    shape : Shape
+        Shape of the new array.
+    dtype : DTypeLike, optional
+        The desired data-type for the array. Default is float.
+    order : {'C', 'F'}, optional
+        Whether to store multi-dimensional data in row-major (C-style)
+        or column-major (Fortran-style) order in memory.
+    device : Device, optional
+        The device to place the result on. Default is 'cpu'.
+    requires_grad : bool, optional
+        Whether the result requires gradient computation.
+
+    Returns
+    -------
+    TensorType
+        Array of ones with the given shape, dtype, and order.
+    """
     from ...tensor import Tensor
 
     if device == "cpu":
@@ -114,7 +208,7 @@ def ones(
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.ones(shape=shape, dtype=dtype, order=order)
-    return Tensor(y, requires_grad=requires_grad)
+    return Tensor._fast_init(y, device=device, requires_grad=requires_grad)
 
 
 ###

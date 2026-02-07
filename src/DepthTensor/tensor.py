@@ -40,7 +40,7 @@ from ._core import (
     sum,
 )
 
-from ._core.utils import get_device, to_tensordata, tensordata_to_device
+from ._core.utils import get_device, to_tensordata, tensordata_to_device, NoValue
 
 import numpy as np
 
@@ -48,7 +48,7 @@ try:
     import cupy as cp
 except (ModuleNotFoundError, ImportError):
     cp = None
-_NoValue = object()
+
 
 ###
 ###
@@ -67,6 +67,28 @@ def infer_differentiation_status(a: Tensor, b: TensorLike) -> bool:
 
 
 class Tensor:
+    """
+    A multi-dimensional array (tensor) with automatic differentiation support.
+
+    This class provides a wrapper around NumPy and CuPy arrays, enabling
+    GPU acceleration and automatic gradient computation.
+
+    Attributes
+    ----------
+    data : TensorData
+        The underlying data of the tensor (numpy.ndarray or cupy.ndarray).
+    device : Device
+        The device where the tensor data resides ('cpu' or 'gpu').
+    grad : TensorData | None
+        The gradient of the tensor. None if no gradient is computed.
+    backward : Callable[[], None] | None
+        The backward function for automatic differentiation.
+    requires_grad : bool
+        Whether the tensor requires gradient computation.
+    name : str
+        Optional name for the tensor.
+    """
+
     data: TensorData
     device: Device
     grad: TensorData | None
@@ -83,6 +105,27 @@ class Tensor:
         requires_grad: bool = False,
         name: str = "",
     ) -> None:
+        """
+        Initialize a Tensor object.
+
+        Parameters
+        ----------
+        obj : TensorLike
+            The data to initialize the tensor with. Can be a list, tuple,
+            numpy array, cupy array, or another Tensor.
+        dtype : DTypeLike | None, optional
+            The desired data type of the tensor. If None, it is inferred from `obj`.
+        device : Device | None, optional
+            The device to place the tensor on ('cpu' or 'gpu'). If None,
+            it is inferred from `obj`.
+        prev : tuple, optional
+            Previous tensors in the computation graph (used for autodiff).
+            Default is empty tuple.
+        requires_grad : bool, optional
+            Whether the tensor requires gradient computation. Default is False.
+        name : str, optional
+            Optional name for the tensor. Default is empty string.
+        """
         # Device init
         if device is None:
             self.device = get_device(obj)
@@ -112,7 +155,36 @@ class Tensor:
         self.grad = None
         self.name = name
 
+    @classmethod
+    def _fast_init(
+        cls,
+        data: TensorData,
+        device: Device,
+        requires_grad: bool = False,
+        prev: tuple = (),
+        name: str = "",
+    ) -> Tensor:
+        obj = object.__new__(cls)
+        obj.data = data
+        obj.device = device
+        obj.requires_grad = requires_grad
+        obj.prev = prev
+        obj.grad = None
+        obj.backward = None
+        obj.name = name
+        return obj
+
     def zero_grad(self) -> None:
+        """
+        Clears the gradients of the tensor.
+
+        Raises
+        ------
+        RuntimeError
+            If the tensor does not require gradients.
+        CuPyNotFound
+            If the device is 'gpu' and CuPy is not available.
+        """
         if not self.requires_grad:
             raise RuntimeError(
                 "Attempted to zero-gradient initialize an undifferentiable tensor."
@@ -142,6 +214,32 @@ class Tensor:
         copy_requires_grad: bool = False,
         copy_grad: bool = False,
     ) -> Tensor:
+        """
+        Return a copy of the tensor.
+
+        Parameters
+        ----------
+        order : {'C', 'F', 'A', 'K'}, optional
+            Controls the memory layout of the copy. 'C' means C-order,
+            'F' means Fortran-order, 'A' means 'F' if a is Fortran contiguous,
+            'C' otherwise. 'K' means match the layout of a as closely
+            as possible. Default is 'K'.
+        dtype : DTypeLike | None, optional
+            The data type of the copy. If None, preserves the original dtype.
+        device : Device | None, optional
+            The device for the copy. If None, preserves the original device.
+        copy_prev : bool, optional
+            Whether to copy the computation graph history. Default is False.
+        copy_requires_grad : bool, optional
+            Whether to copy the requires_grad flag. Default is False.
+        copy_grad : bool, optional
+            Whether to copy the gradients. Default is False.
+
+        Returns
+        -------
+        Tensor
+            A copy of the tensor.
+        """
         t = Tensor(
             self.data.copy(order=order),
             dtype=self.dtype if dtype is None else dtype,
@@ -154,6 +252,21 @@ class Tensor:
         return t
 
     def make_differentiable(self, grad: Tensor | TensorData | None = None) -> None:
+        """
+        Enables gradient tracking for the tensor and optionally initializes gradients.
+
+        Parameters
+        ----------
+        grad : Tensor | TensorData | None, optional
+            Initial gradient values. If None, gradients are initialized to zero.
+
+        Raises
+        ------
+        RuntimeError
+            If there is a mismatch in device or type between the tensor and the provided grad.
+        CuPyNotFound
+            If the device is 'gpu' and CuPy is not available.
+        """
         if not self.requires_grad:
             self.requires_grad = True
 
@@ -191,6 +304,28 @@ class Tensor:
     def to_device(
         self, device: Device, in_place: bool = False, clear_prev: bool = True
     ) -> Tensor:
+        """
+        Moves the tensor to the specified device.
+
+        Parameters
+        ----------
+        device : Device
+            The target device ('cpu' or 'gpu').
+        in_place : bool, optional
+            Whether to perform the operation in-place. Default is False.
+        clear_prev : bool, optional
+            Whether to clear the computation graph history. Default is True.
+
+        Returns
+        -------
+        Tensor
+            The tensor on the specified device.
+
+        Raises
+        ------
+        RuntimeError
+            If in-place operation is attempted on a differentiable tensor.
+        """
         if device == self.device:
             if in_place:
                 return self
@@ -209,25 +344,93 @@ class Tensor:
             return self.copy(device=device)
 
     def get_device(self) -> Device:
+        """
+        Get the device of the tensor.
+
+        Returns
+        -------
+        Device
+            The device of the tensor ('cpu' or 'gpu').
+        """
         return self.device
 
     def is_device(self, device: Device) -> bool:
+        """
+        Check if the tensor is on the specified device.
+
+        Parameters
+        ----------
+        device : Device
+            The device to check against.
+
+        Returns
+        -------
+        bool
+            True if the tensor is on the specified device, False otherwise.
+        """
         return self.device == device
 
     def is_cpu(self) -> bool:
+        """
+        Check if the tensor is on the CPU.
+
+        Returns
+        -------
+        bool
+            True if the tensor is on the CPU, False otherwise.
+        """
         return self.device == "cpu"
 
     def is_gpu(self) -> bool:
+        """
+        Check if the tensor is on the GPU.
+
+        Returns
+        -------
+        bool
+            True if the tensor is on the GPU, False otherwise.
+        """
         return self.device == "gpu"
 
     def set_name(self, name: str) -> Tensor:
+        """
+        Set the name of the tensor.
+
+        Parameters
+        ----------
+        name : str
+            The name to set.
+
+        Returns
+        -------
+        Tensor
+            The tensor itself (for method chaining).
+        """
         self.name = name
         return self
 
     def transpose(self, axes: Shape | None) -> Tensor:
-        y = Tensor(
+        """
+        Permute the dimensions of the tensor.
+
+        Parameters
+        ----------
+        axes : Shape | None
+            A list of integers. By default, reverse the dimensions,
+            otherwise permute the axes according to the values given.
+
+        Returns
+        -------
+        Tensor
+            The transposed tensor.
+
+        Raises
+        ------
+        CuPyNotFound
+            If the device is 'gpu' and CuPy is not available.
+        """
+        y = Tensor._fast_init(
             self.data.transpose(axes),
-            dtype=self.dtype,
             device=self.device,
             requires_grad=self.requires_grad,
         )
@@ -260,22 +463,47 @@ class Tensor:
 
     @property
     def dtype(self) -> DTypeLike:
+        """
+        Data type of the tensor's elements.
+        """
         return self.data.dtype
 
     @property
     def shape(self) -> Shape:
+        """
+        Tuple of tensor dimensions.
+        """
         return self.data.shape
 
     @property
     def ndim(self) -> int:
+        """
+        Number of tensor dimensions.
+        """
         return self.data.ndim
 
     @property
     def size(self) -> int:
+        """
+        Number of elements in the tensor.
+        """
         self.item
         return self.data.size
 
     def item(self, **kwargs: Any) -> Any:
+        """
+        Copy an element of an array to a standard Python scalar and return it.
+
+        Parameters
+        ----------
+        **kwargs : Any
+            Arguments passed to the underlying item() method.
+
+        Returns
+        -------
+        Any
+            The element as a standard Python scalar.
+        """
         return self.data.item(**kwargs)
 
     ###
@@ -297,6 +525,39 @@ class Tensor:
         dtype: DTypeLike | None = None,
         subok: bool = True,
     ) -> Tensor:
+        """
+        Clip (limit) the values in the tensor.
+
+        Parameters
+        ----------
+        a_min : TensorLike
+            Minimum value.
+        a_max : TensorLike
+            Maximum value.
+        out : TensorData | None, optional
+            The results will be placed in this array.
+        requires_grad : bool, optional
+            Whether the result requires gradient computation. Default is False.
+        device : Device, optional
+            The device to place the result on. Default is 'cpu'.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input. At locations where the
+            condition is True, the out array will be set to the ufunc result.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+
+        Returns
+        -------
+        Tensor
+            A tensor with the elements of this tensor, but where values
+            < a_min are replaced with a_min, and those > a_max with a_max.
+        """
         return clip(
             self,
             a_min,
@@ -323,6 +584,32 @@ class Tensor:
         in_place: bool = False,
         where: TensorDataBool | bool = True,
     ) -> Tensor:
+        """
+        Returns the average of the array elements.
+
+        Parameters
+        ----------
+        axis : Axis | None, optional
+            Axis or axes along which the means are computed.
+        dtype : DTypeLike | None, optional
+            Type to use in computing the mean.
+        out : TensorData | None, optional
+            Alternate output array in which to place the result.
+        keepdims : bool, optional
+            If this is set to True, the axes which are reduced are left
+            in the result as dimensions with size one.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            Elements to include in the mean.
+
+        Returns
+        -------
+        Tensor
+            A new tensor containing the mean values.
+        """
         return mean(
             self,
             axis=axis,
@@ -349,9 +636,38 @@ class Tensor:
         dtype: DTypeLike | None = None,
         out: TensorData | None = None,
         keepdims: bool = True,
-        initial: Any = _NoValue,
+        initial: Any = NoValue,
         where: TensorDataBool | bool = True,
     ) -> Tensor:
+        """
+        Sum of array elements over a given axis.
+
+        Parameters
+        ----------
+        device : Device, optional
+            The device to place the result on. Default is 'cpu'.
+        requires_grad : bool, optional
+            Whether the result requires gradient computation. Default is False.
+        axis : Axis | None, optional
+            Axis or axes along which a sum is performed.
+        dtype : DTypeLike | None, optional
+            The type of the returned array and of the accumulator in which
+            the elements are summed.
+        out : TensorData | None, optional
+            Alternative output array in which to place the result.
+        keepdims : bool, optional
+            If this is set to True, the axes which are reduced are left
+            in the result as dimensions with size one. Default is True.
+        initial : Any, optional
+            Starting value for the sum.
+        where : TensorDataBool | bool, optional
+            Elements to include in the sum.
+
+        Returns
+        -------
+        Tensor
+            An array with the same shape as a, with the specified axis removed.
+        """
         return sum(
             self,
             axis=axis,
@@ -373,9 +689,35 @@ class Tensor:
         axis: Axis | None = None,
         out: TensorData | None = None,
         keepdims: bool = False,
-        initial: Any = _NoValue,
+        initial: Any = NoValue,
         where: TensorDataBool | bool = True,
     ) -> Tensor:
+        """
+        Return the maximum of an array or maximum along an axis.
+
+        Parameters
+        ----------
+        device : Device, optional
+            The device to place the result on. Default is 'cpu'.
+        requires_grad : bool, optional
+            Whether the result requires gradient computation. Default is False.
+        axis : Axis | None, optional
+            Axis or axes along which to operate.
+        out : TensorData | None, optional
+            Alternative output array in which to place the result.
+        keepdims : bool, optional
+            If this is set to True, the axes which are reduced are left
+            in the result as dimensions with size one. Default is False.
+        initial : Any, optional
+            The minimum value of an output element.
+        where : TensorDataBool | bool, optional
+            Elements to compare.
+
+        Returns
+        -------
+        Tensor
+            Maximum of a.
+        """
         return max(
             self,
             axis=axis,
@@ -401,6 +743,35 @@ class Tensor:
         dtype: DTypeLike | None = None,
         subok: bool = True,
     ) -> Tensor:
+        """
+        Element-wise maximum of array elements.
+
+        Parameters
+        ----------
+        x2 : TensorLike
+            The array holding the elements to compare.
+        out : TensorData | None, optional
+            The results will be placed in this array.
+        device : Device, optional
+            The device to place the result on. Default is 'cpu'.
+        requires_grad : bool, optional
+            Whether the result requires gradient computation. Default is False.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+
+        Returns
+        -------
+        Tensor
+            The maximum of self and x2, element-wise.
+        """
         return maximum(
             self,
             x2,
@@ -516,16 +887,15 @@ class Tensor:
         return less_equal(self, value)
 
     def __neg__(self) -> Tensor:
-        return negative(self)
+        return negative(self, differentiate=self.requires_grad)
 
     ###
     ### Misc dunder
     ###
 
     def __getitem__(self, index) -> Any:
-        y = Tensor(
+        y = Tensor._fast_init(
             self.data[index],
-            dtype=self.dtype,
             device=self.device,
             requires_grad=self.requires_grad,
         )

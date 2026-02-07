@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-02-07
+
+### Fixed
+
+- Fixed a bug in `Tensor.sum` and `Tensor.max` (and their functional counterparts) where the `initial` argument was incorrectly ignored or caused crashes due to incorrect default value handling. A new internal `NoValue` sentinel is now used.
+
+- Fixed `Tensor.__neg__` (unary negation) to correctly propagate `requires_grad`, enabling autodifferentiation for negated tensors.
+
+- Fixed a `NameError` in the backward pass of unary operations (e.g., `negative`, `abs`, `exp`) where the variable `result` was used instead of `y`.
+
+- Fixed `to_tensordata` utility to correctly infer the device when `device=None` is passed.
+
+- Fixed `TypeError` in `maximum` reduction operation where internal helper `get_two_operand_op_device` was missing required arguments.
+
+### Added
+
+- Comprehensive unit test suite covering:
+  - Tensor initialization, properties, and device management (`tests/test_tensor_init.py`).
+  
+  - Forward operations including arithmetic, comparison, and reduction (`tests/test_ops_forward.py`).
+  
+  - Autodifferentiation (backward pass) for scalars, broadcasting, and complex graphs (`tests/test_autodiff.py`).
+
+  - Extended autodifferentiation tests for unary/binary ops, structural ops, and non-differentiable reductions (`tests/test_autodiff_extended.py`).
+
+  - Error handling for in-place operations and device safety (`tests/test_tensor_errors.py`).
+
+### Improved
+
+- Significantly improved performance of internal Tensor creation and operations by implementing a fast initialization path (`Tensor._fast_init`), bypassing redundant checks for internal operations. This results in ~4x speedup for lightweight operations.
+
+### Documentation
+
+- Integrated comprehensive NumPy-style docstrings across the codebase, including `Tensor` class methods, autodifferentiation engine (`autodiff.py`), and core operations (`ops/`), improving code readability and developer experience.
+
 ## [2.6.0] - 2026-01-11
 
 ### Fixed

@@ -61,6 +61,29 @@ def where(
     device: Device | None = None,
     requires_grad: bool = False,
 ) -> Union[tuple[TensorType, ...], TensorType]:
+    """
+    Return elements chosen from `x` or `y` depending on `condition`.
+
+    Parameters
+    ----------
+    condition : TensorLike
+        Where True, yield `x`, otherwise yield `y`.
+    x : TensorLike | None, optional
+        Values from which to choose.
+    y : TensorLike | None, optional
+        Values from which to choose.
+    device : Device | None, optional
+        The device to place the result on.
+    requires_grad : bool, optional
+        Whether the result requires gradient computation.
+
+    Returns
+    -------
+    TensorType | tuple[TensorType, ...]
+        A tensor with elements from `x` where `condition` is True, and elements
+        from `y` elsewhere. If `x` and `y` are None, returns a tuple of
+        indices where `condition` is True.
+    """
     from ...tensor import Tensor
 
     if device is None:
@@ -75,7 +98,7 @@ def where(
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
             result = cp.where(data)
-        return tuple([Tensor(array, requires_grad=requires_grad) for array in result])
+        return tuple([Tensor._fast_init(array, device=device, requires_grad=requires_grad) for array in result])
     # * Two parameters overload
     elif x is not None and y is not None:
         if (
@@ -94,7 +117,7 @@ def where(
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
             result = cp.where(data, x_data, y_data)
-        return Tensor(result, requires_grad=requires_grad)
+        return Tensor._fast_init(result, device=device, requires_grad=requires_grad)
     else:
         raise ValueError("Both x and y parameters must be given.")
 
@@ -141,7 +164,7 @@ def wrapper_2in_1out(
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = getattr(cp, func_name)(x1, x2, out=out, dtype=dtype, casting=casting)
-    return Tensor(y)
+    return Tensor._fast_init(y, device=op_device)
 
 
 def equal(
@@ -157,6 +180,33 @@ def equal(
     dtype: None = None,
     subok: bool = True,
 ) -> TensorType:
+    """
+    Return (x1 == x2) element-wise.
+
+    Parameters
+    ----------
+    x1, x2 : TensorLike
+        Input tensors.
+    out : TensorDataBool | None, optional
+        A location into which the result is stored.
+    device : Device | None, optional
+        The device to place the result on.
+    where : TensorDataBool | bool, optional
+        This condition is broadcast over the input.
+    casting : Casting, optional
+        Controls what kind of data casting may occur.
+    order : Order, optional
+        Controls the memory layout of the result.
+    dtype : None, optional
+        Overrides the data type of the result.
+    subok : bool, optional
+        If True, then sub-classes will be passed-through.
+
+    Returns
+    -------
+    TensorType
+        Output array, element-wise comparison of x1 and x2.
+    """
     return wrapper_2in_1out(
         x1,
         x2,
@@ -184,6 +234,33 @@ def not_equal(
     dtype: None = None,
     subok: bool = True,
 ) -> TensorType:
+    """
+    Return (x1 != x2) element-wise.
+
+    Parameters
+    ----------
+    x1, x2 : TensorLike
+        Input tensors.
+    out : TensorDataBool | None, optional
+        A location into which the result is stored.
+    device : Device | None, optional
+        The device to place the result on.
+    where : TensorDataBool | bool, optional
+        This condition is broadcast over the input.
+    casting : Casting, optional
+        Controls what kind of data casting may occur.
+    order : Order, optional
+        Controls the memory layout of the result.
+    dtype : None, optional
+        Overrides the data type of the result.
+    subok : bool, optional
+        If True, then sub-classes will be passed-through.
+
+    Returns
+    -------
+    TensorType
+        Output array, element-wise comparison of x1 and x2.
+    """
     return wrapper_2in_1out(
         x1,
         x2,
@@ -211,6 +288,33 @@ def greater(
     dtype: None = None,
     subok: bool = True,
 ) -> TensorType:
+    """
+    Return the truth value of (x1 > x2) element-wise.
+
+    Parameters
+    ----------
+    x1, x2 : TensorLike
+        Input tensors.
+    out : TensorDataBool | None, optional
+        A location into which the result is stored.
+    device : Device | None, optional
+        The device to place the result on.
+    where : TensorDataBool | bool, optional
+        This condition is broadcast over the input.
+    casting : Casting, optional
+        Controls what kind of data casting may occur.
+    order : Order, optional
+        Controls the memory layout of the result.
+    dtype : None, optional
+        Overrides the data type of the result.
+    subok : bool, optional
+        If True, then sub-classes will be passed-through.
+
+    Returns
+    -------
+    TensorType
+        Output array, element-wise comparison of x1 and x2.
+    """
     return wrapper_2in_1out(
         x1,
         x2,
@@ -238,6 +342,33 @@ def greater_equal(
     dtype: None = None,
     subok: bool = True,
 ) -> TensorType:
+    """
+    Return the truth value of (x1 >= x2) element-wise.
+
+    Parameters
+    ----------
+    x1, x2 : TensorLike
+        Input tensors.
+    out : TensorDataBool | None, optional
+        A location into which the result is stored.
+    device : Device | None, optional
+        The device to place the result on.
+    where : TensorDataBool | bool, optional
+        This condition is broadcast over the input.
+    casting : Casting, optional
+        Controls what kind of data casting may occur.
+    order : Order, optional
+        Controls the memory layout of the result.
+    dtype : None, optional
+        Overrides the data type of the result.
+    subok : bool, optional
+        If True, then sub-classes will be passed-through.
+
+    Returns
+    -------
+    TensorType
+        Output array, element-wise comparison of x1 and x2.
+    """
     return wrapper_2in_1out(
         x1,
         x2,
@@ -265,6 +396,33 @@ def less(
     dtype: None = None,
     subok: bool = True,
 ) -> TensorType:
+    """
+    Return the truth value of (x1 < x2) element-wise.
+
+    Parameters
+    ----------
+    x1, x2 : TensorLike
+        Input tensors.
+    out : TensorDataBool | None, optional
+        A location into which the result is stored.
+    device : Device | None, optional
+        The device to place the result on.
+    where : TensorDataBool | bool, optional
+        This condition is broadcast over the input.
+    casting : Casting, optional
+        Controls what kind of data casting may occur.
+    order : Order, optional
+        Controls the memory layout of the result.
+    dtype : None, optional
+        Overrides the data type of the result.
+    subok : bool, optional
+        If True, then sub-classes will be passed-through.
+
+    Returns
+    -------
+    TensorType
+        Output array, element-wise comparison of x1 and x2.
+    """
     return wrapper_2in_1out(
         x1,
         x2,
@@ -292,6 +450,33 @@ def less_equal(
     dtype: None = None,
     subok: bool = True,
 ) -> TensorType:
+    """
+    Return the truth value of (x1 <= x2) element-wise.
+
+    Parameters
+    ----------
+    x1, x2 : TensorLike
+        Input tensors.
+    out : TensorDataBool | None, optional
+        A location into which the result is stored.
+    device : Device | None, optional
+        The device to place the result on.
+    where : TensorDataBool | bool, optional
+        This condition is broadcast over the input.
+    casting : Casting, optional
+        Controls what kind of data casting may occur.
+    order : Order, optional
+        Controls the memory layout of the result.
+    dtype : None, optional
+        Overrides the data type of the result.
+    subok : bool, optional
+        If True, then sub-classes will be passed-through.
+
+    Returns
+    -------
+    TensorType
+        Output array, element-wise comparison of x1 and x2.
+    """
     return wrapper_2in_1out(
         x1,
         x2,
