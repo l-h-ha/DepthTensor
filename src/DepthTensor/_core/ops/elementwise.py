@@ -100,6 +100,10 @@ def wrapper_2in_1out(
         y = getattr(cp, func_name)(a1, a2, out=out, dtype=dtype, casting=casting)
 
     if in_place and x1_is_tensor:
+        if x1.requires_grad:
+            raise RuntimeError(
+                "In-place operations are forbidden on differentiable tensors."
+            )
         x1.data = y
         return x1
 
@@ -147,6 +151,10 @@ def wrapper_1in_1out(
     requires_grad = False
     if isinstance(x, Tensor):
         if in_place:
+            if x.requires_grad:
+                raise RuntimeError(
+                    "In-place operations are forbidden on differentiable tensors."
+                )
             x.data = y
             return x
         requires_grad = x.requires_grad
@@ -1198,7 +1206,7 @@ def clip(
     /,
     out: TensorData | None = None,
     *,
-    requires_grad: bool = False,
+    requires_grad: bool | None = None,
     device: Device | None = None,
     where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
@@ -1225,10 +1233,10 @@ def clip(
         Not more than one of `a_min` and `a_max` may be None.
     out : TensorData | None, optional
         The results will be placed in this array.
-    requires_grad : bool, optional
-        Whether the result requires gradient computation.
+    requires_grad : bool | None, optional
+        Whether the result requires gradient computation. If None, inferred from inputs.
     device : Device | None, optional
-        The device to place the result on.
+        The device to place the result on. If None, inferred from inputs.
     where : TensorDataBool | bool, optional
         This condition is broadcast over the input.
     casting : Casting, optional
@@ -1248,7 +1256,6 @@ def clip(
     """
     from ...tensor import Tensor
 
-    is_tensor_op = False
     if (
         isinstance(a, Tensor)
         and isinstance(a_min, Tensor)
@@ -1256,12 +1263,20 @@ def clip(
     ):
         if not (a.device == a_min.device == a_max.device):
             raise DeviceMismatch(DEVICE_MISMATCH_MSG)
-        is_tensor_op = True
 
-    if is_tensor_op and isinstance(a, Tensor):
-        device_op = a.device
+    if device is None:
+        device_op = get_device(a)
     else:
         device_op = device
+
+    if requires_grad is None:
+        requires_grad = False
+        if isinstance(a, Tensor):
+            requires_grad = requires_grad or a.requires_grad
+        if isinstance(a_min, Tensor):
+            requires_grad = requires_grad or a_min.requires_grad
+        if isinstance(a_max, Tensor):
+            requires_grad = requires_grad or a_max.requires_grad
 
     arr_a, arr_min, arr_max = (
         to_tensordata(a, device=device_op),

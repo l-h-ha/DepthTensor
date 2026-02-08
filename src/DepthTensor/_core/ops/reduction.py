@@ -10,6 +10,7 @@ from ...typing import (
     Axis,
     TensorLike,
     Device,
+    Shape,
 )
 
 from ..exceptions import (
@@ -33,12 +34,49 @@ except (ImportError, ModuleNotFoundError):
 ###
 
 
+def _link_sum_backward(
+    y: TensorType, x: TensorLike, axis: Axis | None, keepdims: bool
+) -> None:
+    from ...tensor import Tensor
+
+    if not isinstance(x, Tensor):
+        return
+
+    def callback(y_grad: TensorData, x_shape: Shape, device: Device) -> TensorData:
+        if device == "cpu":
+            xp = np
+        else:
+            if cp is None:
+                raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+            xp = cp
+
+        grad = y_grad
+        if not keepdims and axis is not None:
+            grad = xp.expand_dims(grad, axis)
+
+        return xp.broadcast_to(grad, x_shape)
+
+    def backward() -> None:
+        if y.grad is None:
+            y.zero_grad()
+        if x.grad is None:
+            x.zero_grad()
+        
+        # y.grad is TensorData | None, but zero_grad ensures it's not None
+        if y.grad is None: return 
+
+        x.grad += callback(y.grad, x.shape, y.device)
+
+    y.prev = (x,)
+    y.backward = backward
+
+
 def sum(
     a: TensorLike,
     /,
     *,
     device: Device | None = None,
-    requires_grad: bool = False,
+    requires_grad: bool | None = None,
     axis: Axis | None = None,
     dtype: DTypeLike | None = None,
     out: TensorData | None = None,
@@ -54,9 +92,9 @@ def sum(
     a : TensorLike
         Elements to sum.
     device : Device | None, optional
-        The device to place the result on.
-    requires_grad : bool, optional
-        Whether the result requires gradient computation.
+        The device to place the result on. If None, inferred from input.
+    requires_grad : bool | None, optional
+        Whether the result requires gradient computation. If None, inferred from input.
     axis : Axis | None, optional
         Axis or axes along which a sum is performed.
     dtype : DTypeLike | None, optional
@@ -84,6 +122,9 @@ def sum(
     else:
         device_op = device
 
+    if requires_grad is None:
+        requires_grad = a.requires_grad if isinstance(a, Tensor) else False
+
     arr = to_tensordata(a, device=device_op)
     if device_op == "cpu":
         kwds = {"axis": axis, "dtype": dtype, "keepdims": keepdims, "where": where}
@@ -96,7 +137,13 @@ def sum(
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.sum(arr, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
-    return Tensor._fast_init(y, device=device_op, requires_grad=requires_grad)
+    
+    result = Tensor._fast_init(y, device=device_op, requires_grad=requires_grad)
+    
+    if requires_grad and isinstance(a, Tensor) and a.requires_grad:
+        _link_sum_backward(result, a, axis, keepdims)
+        
+    return result
 
 
 def max(
@@ -104,7 +151,7 @@ def max(
     /,
     *,
     device: Device | None = None,
-    requires_grad: bool = False,
+    requires_grad: bool | None = None,
     axis: Axis | None = None,
     out: TensorData | None = None,
     keepdims: bool = False,
@@ -119,9 +166,9 @@ def max(
     a : TensorLike
         Input data.
     device : Device | None, optional
-        The device to place the result on.
-    requires_grad : bool, optional
-        Whether the result requires gradient computation.
+        The device to place the result on. If None, inferred from input.
+    requires_grad : bool | None, optional
+        Whether the result requires gradient computation. If None, inferred from input.
     axis : Axis | None, optional
         Axis or axes along which to operate.
     out : TensorData | None, optional
@@ -146,6 +193,9 @@ def max(
     else:
         device_op = device
 
+    if requires_grad is None:
+        requires_grad = a.requires_grad if isinstance(a, Tensor) else False
+
     arr = to_tensordata(a, device=device_op)
     if device_op == "cpu":
         kwargs = {"axis": axis, "out": out, "keepdims": keepdims, "where": where}
@@ -168,7 +218,7 @@ def maximum(
     out: TensorData | None = None,
     *,
     device: Device | None = None,
-    requires_grad: bool = False,
+    requires_grad: bool | None = None,
     where: TensorDataBool | bool = True,
     casting: Casting = "same_kind",
     order: Order = "K",
@@ -185,9 +235,9 @@ def maximum(
     out : TensorData | None, optional
         The results will be placed in this array.
     device : Device | None, optional
-        The device to place the result on.
-    requires_grad : bool, optional
-        Whether the result requires gradient computation.
+        The device to place the result on. If None, inferred from inputs.
+    requires_grad : bool | None, optional
+        Whether the result requires gradient computation. If None, inferred from inputs.
     where : TensorDataBool | bool, optional
         This condition is broadcast over the input.
     casting : Casting, optional
@@ -211,6 +261,13 @@ def maximum(
     device_op = get_two_operand_op_device(
         x1, x2, x1_is_tensor=x1_is_tensor, x2_is_tensor=x2_is_tensor, device=device
     )
+
+    if requires_grad is None:
+        requires_grad = False
+        if x1_is_tensor:
+            requires_grad = requires_grad or x1.requires_grad
+        if x2_is_tensor:
+            requires_grad = requires_grad or x2.requires_grad
 
     _x1: TensorData = to_tensordata(x1, device=device_op)
     _x2: TensorData = to_tensordata(x2, device=device_op)

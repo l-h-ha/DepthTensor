@@ -59,7 +59,7 @@ def where(
     /,
     *,
     device: Device | None = None,
-    requires_grad: bool = False,
+    requires_grad: bool | None = None,
 ) -> Union[tuple[TensorType, ...], TensorType]:
     """
     Return elements chosen from `x` or `y` depending on `condition`.
@@ -73,9 +73,9 @@ def where(
     y : TensorLike | None, optional
         Values from which to choose.
     device : Device | None, optional
-        The device to place the result on.
-    requires_grad : bool, optional
-        Whether the result requires gradient computation.
+        The device to place the result on. If None, inferred from inputs.
+    requires_grad : bool | None, optional
+        Whether the result requires gradient computation. If None, inferred from inputs (x, y).
 
     Returns
     -------
@@ -91,6 +91,9 @@ def where(
 
     # * One parameter overload
     if (x is None) and (y is None):
+        if requires_grad is None:
+            requires_grad = False
+            
         data = to_tensordata(condition, device=device)
         if device == "cpu":
             result = np.where(data)  # type: ignore
@@ -101,6 +104,13 @@ def where(
         return tuple([Tensor._fast_init(array, device=device, requires_grad=requires_grad) for array in result])
     # * Two parameters overload
     elif x is not None and y is not None:
+        if requires_grad is None:
+            requires_grad = False
+            if isinstance(x, Tensor):
+                requires_grad = requires_grad or x.requires_grad
+            if isinstance(y, Tensor):
+                requires_grad = requires_grad or y.requires_grad
+
         if (
             not (get_device(x) == get_device(y) == device)
             and not isinstance(x, (int, float, list, tuple))

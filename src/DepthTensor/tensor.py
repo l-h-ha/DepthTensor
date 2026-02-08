@@ -27,6 +27,11 @@ from ._core import (
     clip,
     abs,
     mean,
+    sqrt,
+    square,
+    log,
+    exp,
+    sign,
     # * comparison
     equal,
     not_equal,
@@ -510,6 +515,370 @@ class Tensor:
     ### Element-wise
     ###
 
+    def sqrt(
+        self,
+        out: TensorData | None = None,
+        *,
+        device: Device | None = None,
+        in_place: bool = False,
+        where: TensorDataBool | bool = True,
+        casting: Casting = "same_kind",
+        order: Order = "K",
+        dtype: DTypeLike | None = None,
+        subok: bool = True,
+    ) -> Tensor:
+        """
+        Return the non-negative square-root of the tensor, element-wise.
+
+        Parameters
+        ----------
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+
+        Returns
+        -------
+        Tensor
+            A new tensor with the square-root of each element.
+        """
+        return sqrt(
+            self,
+            out=out,
+            device=device,
+            in_place=in_place,
+            where=where,
+            casting=casting,
+            order=order,
+            dtype=dtype,
+            subok=subok,
+            differentiate=self.requires_grad,
+        )
+
+    def square(
+        self,
+        out: TensorData | None = None,
+        *,
+        device: Device | None = None,
+        in_place: bool = False,
+        where: TensorDataBool | bool = True,
+        casting: Casting = "same_kind",
+        order: Order = "K",
+        dtype: DTypeLike | None = None,
+        subok: bool = True,
+    ) -> Tensor:
+        """
+        Return the element-wise square of the tensor.
+
+        Parameters
+        ----------
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+
+        Returns
+        -------
+        Tensor
+            A new tensor with the square of each element.
+        """
+        return square(
+            self,
+            out=out,
+            device=device,
+            in_place=in_place,
+            where=where,
+            casting=casting,
+            order=order,
+            dtype=dtype,
+            subok=subok,
+            differentiate=self.requires_grad,
+        )
+
+    def log(
+        self,
+        out: TensorData | None = None,
+        *,
+        device: Device | None = None,
+        in_place: bool = False,
+        where: TensorDataBool | bool = True,
+        casting: Casting = "same_kind",
+        order: Order = "K",
+        dtype: DTypeLike | None = None,
+        subok: bool = True,
+    ) -> Tensor:
+        """
+        Natural logarithm, element-wise.
+
+        Parameters
+        ----------
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+
+        Returns
+        -------
+        Tensor
+            A new tensor with the natural logarithm of each element.
+        """
+        return log(
+            self,
+            out=out,
+            device=device,
+            in_place=in_place,
+            where=where,
+            casting=casting,
+            order=order,
+            dtype=dtype,
+            subok=subok,
+            differentiate=self.requires_grad,
+        )
+
+    def exp(
+        self,
+        out: TensorData | None = None,
+        *,
+        device: Device | None = None,
+        in_place: bool = False,
+        where: TensorDataBool | bool = True,
+        casting: Casting = "same_kind",
+        order: Order = "K",
+        dtype: DTypeLike | None = None,
+        subok: bool = True,
+    ) -> Tensor:
+        """
+        Calculate the exponential of all elements in the tensor.
+
+        Parameters
+        ----------
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+
+        Returns
+        -------
+        Tensor
+            A new tensor with the exponential of each element.
+        """
+        return exp(
+            self,
+            out=out,
+            device=device,
+            in_place=in_place,
+            where=where,
+            casting=casting,
+            order=order,
+            dtype=dtype,
+            subok=subok,
+            differentiate=self.requires_grad,
+        )
+
+    def sign(
+        self,
+        out: TensorData | None = None,
+        *,
+        device: Device | None = None,
+        in_place: bool = False,
+        where: TensorDataBool | bool = True,
+        casting: Casting = "same_kind",
+        order: Order = "K",
+        dtype: DTypeLike | None = None,
+        subok: bool = True,
+    ) -> Tensor:
+        """
+        Returns an element-wise indication of the sign of a number.
+
+        Parameters
+        ----------
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+
+        Returns
+        -------
+        Tensor
+            A new tensor with the sign of each element.
+        """
+        return sign(
+            self,
+            out=out,
+            device=device,
+            in_place=in_place,
+            where=where,
+            casting=casting,
+            order=order,
+            dtype=dtype,
+            subok=subok,
+            differentiate=self.requires_grad,
+        )
+
+    def abs(
+        self,
+        out: TensorData | None = None,
+        *,
+        device: Device | None = None,
+        in_place: bool = False,
+        where: TensorDataBool | bool = True,
+        casting: Casting = "same_kind",
+        order: Order = "K",
+        dtype: DTypeLike | None = None,
+        subok: bool = True,
+    ) -> Tensor:
+        """
+        Calculate the absolute value element-wise.
+
+        Parameters
+        ----------
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+
+        Returns
+        -------
+        Tensor
+            A new tensor with the absolute value of each element.
+        """
+        return abs(
+            self,
+            out=out,
+            device=device,
+            in_place=in_place,
+            where=where,
+            casting=casting,
+            order=order,
+            dtype=dtype,
+            subok=subok,
+            differentiate=self.requires_grad,
+        )
+
+    def neg(
+        self,
+        out: TensorData | None = None,
+        *,
+        device: Device | None = None,
+        in_place: bool = False,
+        where: TensorDataBool | bool = True,
+        casting: Casting = "same_kind",
+        order: Order = "K",
+        dtype: DTypeLike | None = None,
+        subok: bool = True,
+    ) -> Tensor:
+        """
+        Numerical negative, element-wise.
+
+        Parameters
+        ----------
+        out : TensorData | None, optional
+            A location into which the result is stored.
+        device : Device | None, optional
+            The device to place the result on.
+        in_place : bool, optional
+            Whether to perform the operation in-place.
+        where : TensorDataBool | bool, optional
+            This condition is broadcast over the input.
+        casting : Casting, optional
+            Controls what kind of data casting may occur.
+        order : Order, optional
+            Controls the memory layout of the result.
+        dtype : DTypeLike | None, optional
+            Overrides the data type of the result.
+        subok : bool, optional
+            If True, then sub-classes will be passed-through.
+
+        Returns
+        -------
+        Tensor
+            A new tensor with the negative of each element.
+        """
+        return negative(
+            self,
+            out=out,
+            device=device,
+            in_place=in_place,
+            where=where,
+            casting=casting,
+            order=order,
+            dtype=dtype,
+            subok=subok,
+            differentiate=self.requires_grad,
+        )
+
     def clip(
         self,
         a_min: TensorLike,
@@ -517,8 +886,8 @@ class Tensor:
         /,
         out: TensorData | None = None,
         *,
-        requires_grad: bool = False,
-        device: Device = "cpu",
+        requires_grad: bool | None = None,
+        device: Device | None = None,
         where: TensorDataBool | bool = True,
         casting: Casting = "same_kind",
         order: Order = "K",
@@ -536,10 +905,10 @@ class Tensor:
             Maximum value.
         out : TensorData | None, optional
             The results will be placed in this array.
-        requires_grad : bool, optional
-            Whether the result requires gradient computation. Default is False.
-        device : Device, optional
-            The device to place the result on. Default is 'cpu'.
+        requires_grad : bool | None, optional
+            Whether the result requires gradient computation. If None, inferred from inputs.
+        device : Device | None, optional
+            The device to place the result on. If None, inferred from inputs.
         where : TensorDataBool | bool, optional
             This condition is broadcast over the input. At locations where the
             condition is True, the out array will be set to the ufunc result.
@@ -630,8 +999,8 @@ class Tensor:
         self,
         /,
         *,
-        device: Device = "cpu",
-        requires_grad: bool = False,
+        device: Device | None = None,
+        requires_grad: bool | None = None,
         axis: Axis | None = None,
         dtype: DTypeLike | None = None,
         out: TensorData | None = None,
@@ -644,10 +1013,10 @@ class Tensor:
 
         Parameters
         ----------
-        device : Device, optional
-            The device to place the result on. Default is 'cpu'.
-        requires_grad : bool, optional
-            Whether the result requires gradient computation. Default is False.
+        device : Device | None, optional
+            The device to place the result on. If None, inferred from input.
+        requires_grad : bool | None, optional
+            Whether the result requires gradient computation. If None, inferred from input.
         axis : Axis | None, optional
             Axis or axes along which a sum is performed.
         dtype : DTypeLike | None, optional
@@ -684,8 +1053,8 @@ class Tensor:
         self,
         /,
         *,
-        device: Device = "cpu",
-        requires_grad: bool = False,
+        device: Device | None = None,
+        requires_grad: bool | None = None,
         axis: Axis | None = None,
         out: TensorData | None = None,
         keepdims: bool = False,
@@ -697,10 +1066,10 @@ class Tensor:
 
         Parameters
         ----------
-        device : Device, optional
-            The device to place the result on. Default is 'cpu'.
-        requires_grad : bool, optional
-            Whether the result requires gradient computation. Default is False.
+        device : Device | None, optional
+            The device to place the result on. If None, inferred from input.
+        requires_grad : bool | None, optional
+            Whether the result requires gradient computation. If None, inferred from input.
         axis : Axis | None, optional
             Axis or axes along which to operate.
         out : TensorData | None, optional
@@ -735,8 +1104,8 @@ class Tensor:
         /,
         out: TensorData | None = None,
         *,
-        device: Device = "cpu",
-        requires_grad: bool = False,
+        device: Device | None = None,
+        requires_grad: bool | None = None,
         where: TensorDataBool | bool = True,
         casting: Casting = "same_kind",
         order: Order = "K",
@@ -752,10 +1121,10 @@ class Tensor:
             The array holding the elements to compare.
         out : TensorData | None, optional
             The results will be placed in this array.
-        device : Device, optional
-            The device to place the result on. Default is 'cpu'.
-        requires_grad : bool, optional
-            Whether the result requires gradient computation. Default is False.
+        device : Device | None, optional
+            The device to place the result on. If None, inferred from inputs.
+        requires_grad : bool | None, optional
+            Whether the result requires gradient computation. If None, inferred from inputs.
         where : TensorDataBool | bool, optional
             This condition is broadcast over the input.
         casting : Casting, optional
@@ -888,6 +1257,9 @@ class Tensor:
 
     def __neg__(self) -> Tensor:
         return negative(self, differentiate=self.requires_grad)
+
+    def __abs__(self) -> Tensor:
+        return abs(self, differentiate=self.requires_grad)
 
     ###
     ### Misc dunder
