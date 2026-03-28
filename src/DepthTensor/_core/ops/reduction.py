@@ -56,19 +56,20 @@ def _link_sum_backward(
 
         return xp.broadcast_to(grad, x_shape)
 
-    def backward() -> None:
+    def grad_fn() -> None:
         if y.grad is None:
             y.zero_grad()
         if x.grad is None:
             x.zero_grad()
-        
+
         # y.grad is TensorData | None, but zero_grad ensures it's not None
-        if y.grad is None: return 
+        if y.grad is None:
+            return
 
         x.grad += callback(y.grad, x.shape, y.device)
 
     y.prev = (x,)
-    y.backward = backward
+    y.grad_fn = grad_fn
 
 
 def sum(
@@ -137,12 +138,12 @@ def sum(
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.sum(arr, axis=axis, dtype=dtype, out=out, keepdims=keepdims)
-    
+
     result = Tensor._fast_init(y, device=device_op, requires_grad=requires_grad)
-    
+
     if requires_grad and isinstance(a, Tensor) and a.requires_grad:
         _link_sum_backward(result, a, axis, keepdims)
-        
+
     return result
 
 

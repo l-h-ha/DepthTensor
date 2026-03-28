@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 Shape: TypeAlias = tuple[int, ...]
 Axis: TypeAlias = int | Shape
-Device: TypeAlias = Literal["cpu", "gpu"]
+Device: TypeAlias = Literal["cpu", "cuda"]
 Order: TypeAlias = Literal["K", "A", "C", "F"]
 Casting: TypeAlias = Literal["no", "equiv", "safe", "same_kind", "unsafe"]
 

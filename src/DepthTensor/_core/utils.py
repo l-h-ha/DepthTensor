@@ -30,7 +30,7 @@ def tensordata_to_device(obj: TensorData, device: Device) -> TensorData:
     obj : TensorData
         The data to move (numpy or cupy array).
     device : Device
-        The target device ('cpu' or 'gpu').
+        The target device ('cpu' or 'cuda').
 
     Returns
     -------
@@ -40,21 +40,21 @@ def tensordata_to_device(obj: TensorData, device: Device) -> TensorData:
     Raises
     ------
     CuPyNotFound
-        If the target device is 'gpu' and CuPy is not available.
+        If the target device is 'cuda' and CuPy is not available.
     RuntimeError
         If the input object is not a valid tensor data type.
     """
     if isinstance(obj, np.ndarray):
         if device == "cpu":
             return obj
-        # * gpu
+        # * cuda
         if cp is not None:
             return cp.array(obj)
         else:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
     else:
         if cp is not None and isinstance(obj, cp.ndarray):
-            if device == "gpu":
+            if device == "cuda":
                 return obj
             # * cpu
             return cp.asnumpy(obj)
@@ -111,7 +111,7 @@ def unbroadcast_tensordata_to_shape(
 
         if device == "cpu":
             result = np.sum(result, axis=gained_axes)
-        elif device == "gpu":
+        elif device == "cuda":
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
             result = cp.sum(result, axis=gained_axes)
@@ -126,7 +126,7 @@ def unbroadcast_tensordata_to_shape(
     if len(stretched_axes) > 0:
         if device == "cpu":
             result = np.sum(result, axis=tuple(stretched_axes), keepdims=True)
-        elif device == "gpu":
+        elif device == "cuda":
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
             result = cp.sum(result, axis=tuple(stretched_axes), keepdims=True)
@@ -184,7 +184,7 @@ def get_device(a: TensorLike) -> Device:
     Returns
     -------
     Device
-        'cpu' or 'gpu'.
+        'cpu' or 'cuda'.
 
     Raises
     ------
@@ -198,7 +198,7 @@ def get_device(a: TensorLike) -> Device:
     elif isinstance(a, (np.ndarray, np.number, np.bool_)):
         return "cpu"
     elif cp is not None and isinstance(a, (cp.ndarray, cp.number, cp.bool_)):
-        return "gpu"
+        return "cuda"
     elif isinstance(a, (int, float, list, tuple, bool)):
         return "cpu"
     else:
@@ -207,7 +207,7 @@ def get_device(a: TensorLike) -> Device:
 
 def get_complement_device(device: Device) -> Device:
     if device == "cpu":
-        return "gpu"
+        return "cuda"
     else:
         return "cpu"
 
@@ -240,7 +240,7 @@ def get_two_operand_op_device(
             ):
                 # * This leaves x2 to be either np.array or cp.array.
                 raise DeviceMismatch(
-                    f"There is a incompatibility in datatypes between the two operands of types Tensor and {type(x2)}. Expected datatype of device: {x1.device} {"(CuPy arrays, GPU Tensors)" if x1.device == "gpu" else "(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)"}, got datatype of type: {type(x2)}."
+                    f"There is a incompatibility in datatypes between the two operands of types Tensor and {type(x2)}. Expected datatype of device: {x1.device} {"(CuPy arrays, CUDA Tensors)" if x1.device == "cuda" else "(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)"}, got datatype of type: {type(x2)}."
                 )
         elif x2_is_tensor:
             op_device = x2.device
@@ -255,7 +255,7 @@ def get_two_operand_op_device(
             ):
                 # * This leaves x1 to be either np.array or cp.array.
                 raise DeviceMismatch(
-                    f"There is a incompatibility in datatypes between the two operands of types {type(x1)} and Tensor. Expected datatype of device: {x2.device} {"(CuPy arrays, GPU Tensors)" if x2.device == "gpu" else "(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)"}, got datatype of type: {type(x1)}."
+                    f"There is a incompatibility in datatypes between the two operands of types {type(x1)} and Tensor. Expected datatype of device: {x2.device} {"(CuPy arrays, CUDA Tensors)" if x2.device == "cuda" else "(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)"}, got datatype of type: {type(x1)}."
                 )
         else:
             if isinstance(x1, np.ndarray) or isinstance(x2, np.ndarray):
@@ -263,7 +263,7 @@ def get_two_operand_op_device(
             if cp is not None and (
                 isinstance(x1, cp.ndarray) or isinstance(x2, cp.ndarray)
             ):
-                return "gpu"
+                return "cuda"
             return get_device(x1)
 
     return op_device
@@ -279,6 +279,7 @@ __all__ = [
     "to_tensordata",
     "get_two_operand_op_device",
     "NoValue",
+    "get_complement_device",
 ]
 
 NoValue = object()

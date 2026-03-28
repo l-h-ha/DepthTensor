@@ -1,9 +1,9 @@
 from .tensor import Tensor
-from .autodiff import differentiate
 from .typing import *
 
-from ._core.ops import *
-from ._core.exceptions import *
-from ._core import random
+from ._core import *
 
-__version__ = "2.8.0"
+from .enum import *
+from ._ext import *
+
+__version__ = "2.9.0rc1"

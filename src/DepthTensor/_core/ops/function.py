@@ -10,6 +10,6 @@ class Function:
 
     @abstractmethod
     def __call__(
-        self, *args: Any, differentiate: bool = False, **kwargs: Any
+        self, *args: Any, requires_grad: bool = False, **kwargs: Any
     ) -> TensorType:
         raise NotImplementedError

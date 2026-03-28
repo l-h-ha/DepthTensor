@@ -175,7 +175,7 @@ def wrapper_diff_2in_1out(
 
     x1_is_tensor, x2_is_tensor = isinstance(x1, Tensor), isinstance(x2, Tensor)
 
-    def backward() -> None:
+    def grad_fn() -> None:
         if y.grad is None:
             y.zero_grad()
 
@@ -200,7 +200,7 @@ def wrapper_diff_2in_1out(
     if x2_is_tensor and x2.requires_grad:
         prev.append(x2)
     y.prev = tuple(prev)
-    y.backward = backward
+    y.grad_fn = grad_fn
 
 
 def wrapper_diff_1in_1out(y: TensorType, x1: TensorLike, callback_x1: Callable) -> None:
@@ -209,7 +209,7 @@ def wrapper_diff_1in_1out(y: TensorType, x1: TensorLike, callback_x1: Callable) 
 
     from ...tensor import Tensor
 
-    def backward() -> None:
+    def grad_fn() -> None:
         if y.grad is None:
             y.zero_grad()
 
@@ -222,7 +222,7 @@ def wrapper_diff_1in_1out(y: TensorType, x1: TensorLike, callback_x1: Callable) 
 
     if isinstance(x1, Tensor) and x1.requires_grad:
         y.prev = (x1,)
-    y.backward = backward
+    y.grad_fn = grad_fn
 
 
 ###
@@ -254,7 +254,7 @@ class add_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Add arguments element-wise.
@@ -279,7 +279,7 @@ class add_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -300,7 +300,7 @@ class add_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x1, x2)
         return y
 
@@ -332,7 +332,7 @@ class sub_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Subtract arguments, element-wise.
@@ -357,7 +357,7 @@ class sub_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -378,7 +378,7 @@ class sub_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x1, x2)
         return y
 
@@ -407,7 +407,7 @@ class mul_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Multiply arguments element-wise.
@@ -432,7 +432,7 @@ class mul_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -453,7 +453,7 @@ class mul_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x1, x2)
         return y
 
@@ -485,7 +485,7 @@ class matmul_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Matrix product of two arrays.
@@ -508,7 +508,7 @@ class matmul_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -529,7 +529,7 @@ class matmul_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x1, x2)
         return y
 
@@ -560,7 +560,7 @@ class div_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Returns a true division of the inputs, element-wise.
@@ -587,7 +587,7 @@ class div_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -608,7 +608,7 @@ class div_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x1, x2)
         return y
 
@@ -641,7 +641,7 @@ class power_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         First array elements raised to powers from second array, element-wise.
@@ -668,7 +668,7 @@ class power_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -689,7 +689,7 @@ class power_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x1, x2)
         return y
 
@@ -719,7 +719,7 @@ class negative_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Numerical negative, element-wise.
@@ -744,7 +744,7 @@ class negative_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -764,7 +764,7 @@ class negative_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x)
         return y
 
@@ -790,7 +790,7 @@ class sign_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Returns an element-wise indication of the sign of a number.
@@ -815,7 +815,7 @@ class sign_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -835,7 +835,7 @@ class sign_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x)
         return y
 
@@ -861,7 +861,7 @@ class abs_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Calculate the absolute value element-wise.
@@ -886,7 +886,7 @@ class abs_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -906,7 +906,7 @@ class abs_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x)
         return y
 
@@ -932,7 +932,7 @@ class exp_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Calculate the exponential of all elements in the input array.
@@ -957,7 +957,7 @@ class exp_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -977,7 +977,7 @@ class exp_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x)
         return y
 
@@ -1003,7 +1003,7 @@ class sqrt_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Return the non-negative square-root of an array, element-wise.
@@ -1028,7 +1028,7 @@ class sqrt_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -1049,7 +1049,7 @@ class sqrt_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x)
         return y
 
@@ -1074,7 +1074,7 @@ class log_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Natural logarithm, element-wise.
@@ -1099,7 +1099,7 @@ class log_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -1119,7 +1119,7 @@ class log_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x)
         return y
 
@@ -1144,7 +1144,7 @@ class square_cls(Function):
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Return the element-wise square of the input.
@@ -1169,7 +1169,7 @@ class square_cls(Function):
             Overrides the data type of the result.
         subok : bool, optional
             If True, then sub-classes will be passed-through.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -1189,7 +1189,7 @@ class square_cls(Function):
             dtype=dtype,
             subok=subok,
         )
-        if differentiate:
+        if requires_grad:
             self.link(y, x)
         return y
 
@@ -1337,7 +1337,7 @@ class mean_cls(Function):
                 grad = xp.expand_dims(grad, axis)
             return xp.broadcast_to(grad, x1_shape)
 
-        def backward() -> None:
+        def grad_fn() -> None:
             if y.requires_grad:
                 if y.grad is None:
                     y.zero_grad()
@@ -1349,7 +1349,7 @@ class mean_cls(Function):
 
         if isinstance(x, Tensor) and x.requires_grad:
             y.prev = (x,)
-        y.backward = backward
+        y.grad_fn = grad_fn
 
     def __call__(
         self,
@@ -1363,7 +1363,7 @@ class mean_cls(Function):
         device: Device | None = None,
         in_place: bool = False,
         where: TensorDataBool | bool = True,
-        differentiate: bool = False,
+        requires_grad: bool = False,
     ) -> TensorType:
         """
         Compute the arithmetic mean along the specified axis.
@@ -1387,7 +1387,7 @@ class mean_cls(Function):
             Whether to perform the operation in-place.
         where : TensorDataBool | bool, optional
             Elements to include in the mean.
-        differentiate : bool, optional
+        requires_grad : bool, optional
             Whether to link the result to the computation graph for autodiff.
 
         Returns
@@ -1424,7 +1424,7 @@ class mean_cls(Function):
             requires_grad = x.requires_grad
 
             y = Tensor._fast_init(y, device=op_device, requires_grad=requires_grad)
-            if differentiate:
+            if requires_grad:
                 self.link(y, x, axis, keepdims)
         else:
             y = Tensor._fast_init(y, device=op_device, requires_grad=requires_grad)

@@ -46,7 +46,7 @@ All gradients are aggregated from all gradient downstreams.
 
 The `Tensor` class acts like a node in the Directed Acyclic Graph (DAG).
 
-Operations are automatically dispatched to backend computers, which consists of `numpy` (CPU) and `cupy` (GPU).
+Operations are automatically dispatched to backend computers, which consists of `numpy` (CPU) and `cupy` (CUDA).
 
 Computational graphs are built dynamically at runtime.
 
@@ -62,11 +62,11 @@ $$
 import depthtensor as dt
 
 # Initialize tensors
-x = dt.Tensor([1.2], device="gpu", requires_grad=True)
-y = dt.Tensor([1.2], device="gpu", requires_grad=True)
+x = dt.Tensor([1.2], device="cuda", requires_grad=True)
+y = dt.Tensor([1.2], device="cuda", requires_grad=True)
 
-a, b = dt.Tensor([1], device="gpu"), dt.Tensor(
-    [100], device="gpu"
+a, b = dt.Tensor([1], device="cuda"), dt.Tensor(
+    [100], device="cuda"
 )
 
 # Optimization Loop

@@ -13,7 +13,7 @@ for i in range(500):
     loss = (a - x) ** 2 + b * (y - x**2) ** 2
 
     # Backward pass
-    dt.differentiate(loss)
+    loss.backward()
 
     # Gradient Descent
     x.data -= lr * x.grad  # type: ignore
