@@ -105,4 +105,4 @@ Requirements:
 pip install depthtensor
 ```
 
-## Author: Le Hong Ha
+## Author: Ha Hong Le
