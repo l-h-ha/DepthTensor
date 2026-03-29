@@ -1,12 +1,7 @@
+import importlib.util
 import pytest
 
-CUDA_AVAILABLE = False
-try:
-    import cupy
-
-    GPU_AVAILABLE = True
-except (ImportError, Exception):
-    pass
+CUDA_AVAILABLE = importlib.util.find_spec("cupy") is not None
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc):
@@ -16,6 +11,6 @@ def pytest_generate_tests(metafunc: pytest.Metafunc):
     """
     if "device" in metafunc.fixturenames:
         devices = ["cpu"]
-        if GPU_AVAILABLE:
+        if CUDA_AVAILABLE:
             devices.append("cuda")
         metafunc.parametrize("device", devices)

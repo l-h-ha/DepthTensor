@@ -71,7 +71,7 @@ from ._core.exceptions import (
 from ._core.nn.functional.activation_functions import relu
 from .enum.initialize_grad import InitializeGrad
 
-__version__ = "2.9.0rc2"
+__version__ = "2.9.0rc3"
 
 __all__ = [
     # Core Tensor

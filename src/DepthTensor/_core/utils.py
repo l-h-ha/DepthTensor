@@ -239,7 +239,7 @@ def get_two_operand_op_device(
             ):
                 # * This leaves x2 to be either np.array or cp.array.
                 raise DeviceMismatch(
-                    f"There is a incompatibility in datatypes between the two operands of types Tensor and {type(x2)}. Expected datatype of device: {x1.device} {"(CuPy arrays, CUDA Tensors)" if x1.device == "cuda" else "(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)"}, got datatype of type: {type(x2)}."
+                    f"There is a incompatibility in datatypes between the two operands of types Tensor and {type(x2)}. Expected datatype of device: {x1.device} {'(CuPy arrays, CUDA Tensors)' if x1.device == 'cuda' else '(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)'}, got datatype of type: {type(x2)}."
                 )
         elif x2_is_tensor:
             op_device = x2.device
@@ -254,7 +254,7 @@ def get_two_operand_op_device(
             ):
                 # * This leaves x1 to be either np.array or cp.array.
                 raise DeviceMismatch(
-                    f"There is a incompatibility in datatypes between the two operands of types {type(x1)} and Tensor. Expected datatype of device: {x2.device} {"(CuPy arrays, CUDA Tensors)" if x2.device == "cuda" else "(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)"}, got datatype of type: {type(x1)}."
+                    f"There is a incompatibility in datatypes between the two operands of types {type(x1)} and Tensor. Expected datatype of device: {x2.device} {'(CuPy arrays, CUDA Tensors)' if x2.device == 'cuda' else '(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)'}, got datatype of type: {type(x1)}."
                 )
         else:
             if isinstance(x1, np.ndarray) or isinstance(x2, np.ndarray):

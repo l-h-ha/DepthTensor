@@ -1716,7 +1716,7 @@ class Tensor:
         str
             String representation.
         """
-        return f"Tensor({self.data}, device={self.device}{f", name={self.name}" if self.name != "" else ""}, req_grad={self.requires_grad})"
+        return f"Tensor({self.data}, device={self.device}{f', name={self.name}' if self.name != '' else ''}, req_grad={self.requires_grad})"
 
     def __hash__(self) -> int:
         """

@@ -1,4 +1,4 @@
-from typing import TypeAlias, Literal, TYPE_CHECKING, Protocol, Any, Callable, Union
+from typing import TypeAlias, Literal, TYPE_CHECKING, Any, Union
 
 import numpy as np
 import numpy.typing as npt

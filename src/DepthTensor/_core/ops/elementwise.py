@@ -44,8 +44,6 @@ except (ImportError, ModuleNotFoundError):
 def get_requires_grad_and_prev(
     x1: TensorLike, x2: TensorLike, x1_is_tensor: bool, x2_is_tensor: bool
 ):
-    from ...tensor import Tensor
-
     y_requires_grad = False
     if x1_is_tensor:
         y_requires_grad = x1.requires_grad
