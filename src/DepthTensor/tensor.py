@@ -13,11 +13,8 @@ from .typing import (
     Axis,
 )
 
-from ._core import (
-    CuPyNotFound,
-    CUPY_NOT_FOUND_MSG,
-    GradientComputationError,
-    # * elementwise
+from ._core.exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG, GradientComputationError
+from ._core.ops.elementwise import (
     add,
     subtract,
     multiply,
@@ -26,20 +23,23 @@ from ._core import (
     negative,
     power,
     clip,
-    abs,
     mean,
     sqrt,
     square,
     exp,
     log,
-    # * comparison
+)
+
+from ._core.ops.comparison import (
     equal,
     not_equal,
     greater,
     greater_equal,
     less,
     less_equal,
-    # * reduction
+)
+
+from ._core.ops.reduction import (
     max,
     maximum,
     sum,
@@ -53,7 +53,6 @@ from ._core.utils import (
 )
 
 from .enum import InitializeGrad
-
 import numpy as np
 
 try:

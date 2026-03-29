@@ -1,1 +1,5 @@
-from .initialize_grad import *
+from .initialize_grad import InitializeGrad
+
+__all__ = [
+    "InitializeGrad",
+]

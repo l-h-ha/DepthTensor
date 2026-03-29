@@ -209,10 +209,3 @@ def ones(
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.ones(shape=shape, dtype=dtype, order=order)
     return Tensor._fast_init(y, device=device, requires_grad=requires_grad)
-
-
-###
-###
-###
-
-__all__ = ["zeros_like", "ones_like", "zeros", "ones"]

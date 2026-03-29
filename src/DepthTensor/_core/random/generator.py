@@ -1,9 +1,7 @@
-from typing import Optional, overload, Any
-
+from typing import overload, Any
 from numpy import random
 
 from ...typing import DTypeLike, TensorType, Axis, int64, Device, float32
-
 from ..exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG
 
 import numpy as np

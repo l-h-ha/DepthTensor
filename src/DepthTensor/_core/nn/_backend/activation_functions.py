@@ -3,15 +3,14 @@ from ....typing import (
     TensorLike,
     TensorData,
     Device,
-    TensorDataBool,
     DTypeLike,
-    Casting,
-    Order,
 )
 
-from ... import Function, CuPyNotFound, CUPY_NOT_FOUND_MSG
+from ...ops.function import Function
+from ...exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG
 from ...utils import unbroadcast_tensordata_to_shape, get_device, to_tensordata
 
+from .... import _ext as ext
 
 import numpy as np
 
@@ -80,7 +79,6 @@ class relu_cls(Function):
         """
 
         from ....tensor import Tensor
-        from .... import nn
 
         x_is_tensor = isinstance(x, Tensor)
         if x_is_tensor:
@@ -95,7 +93,7 @@ class relu_cls(Function):
                 a = a.astype(np.float32)
 
             y_data = a if in_place else a.copy()
-            nn.relu_forward_cpu(y_data)
+            ext.nn.relu_forward_cpu(y_data)
         else:
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)

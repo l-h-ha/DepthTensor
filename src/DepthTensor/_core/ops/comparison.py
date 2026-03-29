@@ -93,7 +93,7 @@ def where(
     if (x is None) and (y is None):
         if requires_grad is None:
             requires_grad = False
-            
+
         data = to_tensordata(condition, device=device)
         if device == "cpu":
             result = np.where(data)  # type: ignore
@@ -101,7 +101,12 @@ def where(
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
             result = cp.where(data)
-        return tuple([Tensor._fast_init(array, device=device, requires_grad=requires_grad) for array in result])
+        return tuple(
+            [
+                Tensor._fast_init(array, device=device, requires_grad=requires_grad)
+                for array in result
+            ]
+        )
     # * Two parameters overload
     elif x is not None and y is not None:
         if requires_grad is None:
@@ -499,18 +504,3 @@ def less_equal(
         dtype=dtype,
         subok=subok,
     )
-
-
-###
-###
-###
-
-__all__ = [
-    "where",
-    "equal",
-    "not_equal",
-    "greater",
-    "greater_equal",
-    "less",
-    "less_equal",
-]

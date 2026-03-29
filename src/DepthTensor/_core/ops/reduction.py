@@ -16,8 +16,6 @@ from ...typing import (
 from ..exceptions import (
     CuPyNotFound,
     CUPY_NOT_FOUND_MSG,
-    DeviceMismatch,
-    DEVICE_MISMATCH_MSG,
 )
 
 from ..utils import to_tensordata, get_device, get_two_operand_op_device, NoValue
@@ -289,10 +287,3 @@ def maximum(
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
         y = cp.maximum(_x1, _x2, out=out, dtype=dtype, casting=casting)
     return Tensor._fast_init(y, device=device_op, requires_grad=requires_grad)
-
-
-###
-###
-###
-
-__all__ = ["max", "maximum", "sum"]
