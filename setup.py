@@ -1,7 +1,14 @@
-from setuptools import setup, Extension
+from setuptools import setup, Extension, find_namespace_packages
 import pybind11
 import glob
 import os
+
+source_package = "depthtensor" if "depthtensor" in os.listdir("src") else "DepthTensor"
+source_packages = find_namespace_packages(
+    where="src",
+    include=[source_package, f"{source_package}.*"],
+)
+packages = [package.replace(source_package, "depthtensor", 1) for package in source_packages]
 
 bindings_src = glob.glob("csrc/bindings/*.cpp")
 cpu_core_src = glob.glob("csrc/cpu/core/*.cpp")
@@ -22,4 +29,9 @@ ext_modules = [
     ),
 ]
 
-setup(ext_modules=ext_modules)
+setup(
+    packages=packages,
+    package_dir={"depthtensor": f"src/{source_package}"},
+    package_data={"depthtensor._ext": ["*.pyi"]},
+    ext_modules=ext_modules,
+)

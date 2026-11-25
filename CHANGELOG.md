@@ -1,344 +1,403 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+Uses [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [SemVer](https://semver.org/spec/v2.0.0.html).
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [3.0.0]
+
+### Changed
+
+- Replace `dt.differentiate(loss)` with `loss.backward()`.
+- Use `device="cuda"` for GPU tensors. Rename the `gpu` extra to `cuda`.
+- Reject complex values and dtypes. Autograd accepts floating-point tensors.
+- Share arithmetic dispatch and backward setup.
+- Separate graph execution, storage tracking, and indexing.
+- Publish a source distribution and document the compiler requirements.
+- Declare the MIT license with SPDX metadata.
+
+### Fixed
+
+- Fix repeated backward and restore gradients after failures.
+- Copy NumPy and CuPy gradient seeds into writable buffers of the tensor dtype.
+- Use the operation's compute dtype in backward.
+- Traverse deep graphs iteratively.
+- Disable gradient tracking when `requires_grad=False`. Reject gradients for integer and Boolean operations.
+- Clear history when disabling gradients. Detached copies start as leaves.
+- Preserve history and independent gradients in Tensor copies.
+- Preserve leaf write protection after Python copy or pickle.
+- Reject Python copy and pickle for active graphs. Use `Tensor.copy()`.
+- Track writes through views, shared arrays, and `out=`.
+- Reject aliased `out=` writes and in-place arithmetic with gradients.
+- Reject indexed or ReLU writes that overwrite differentiable results.
+- Save forward operands and indices for backward.
+- Reject stale views, gathers, and device transfers during backward.
+- Preserve history in `to_device(clear_prev=False)`.
+- Fix masked `sum()`, `mean()`, and `max()` on CPU and CUDA.
+- Split `max()` gradients evenly across tied values.
+- Accumulate means before casting to `out=`.
+- Update the device after in-place `mean()`.
+- Route `where()` gradients across broadcasts. Skip inactive nonlinear derivatives.
+- Apply pointwise masks on CUDA and in backward.
+- Fix vector and batched matmul gradients.
+- Return zero gradients for singleton axes broadcast to empty axes.
+- Accumulate repeated indices and accept Tensor indices and values.
+- Check CUDA integer indices before reads and writes.
+- Fix CUDA `ones_like()` and device overrides for binary operations and `zeros_like()`.
+- Fix operators with a NumPy operand on the left. Reject ambiguous tensor truth values.
+- Infer devices for scalars and `where()`. Transfer CPU scalar results to CUDA.
+- Keep CPU scalar results writable.
+- Default `transpose()` to reversed axes and handle negative axes in backward.
+- Accept writable C- and Fortran-contiguous buffers in CPU ReLU.
+- Preserve CPU ReLU dtypes and write to `out` when supplied. Track writes on both devices.
+- Preserve in-place ReLU history and zero inactive gradients.
+- Combine successive ReLU masks and preserve them in copies.
+- Fix zero-exponent, zero-base, and subnormal power gradients.
+- Route reversed and equal clip bounds to the upper bound.
+- Use the requested CUDA output layout and apply `clip()` casting rules.
+- Stabilize division gradients at extreme scales.
+- Fix scalar CPU `uniform()` and preserve its half-open interval after rounding.
+- Support CPU seeding and dtype names in `rand()` and `randn()`.
+- Package native headers and lowercase module paths. Require Python 3.10+.
+- Use public imports and `backward()` in examples.
+- Preserve large mean reductions and gradients with float16 outputs.
+- Use `requires_grad` in arithmetic. Reject in-place results that track gradients.
+- Run backward through chains of history-preserving copies without recursion.
+- Preserve large integers when constructing tensors with an explicit dtype.
+- Skip inactive nonfinite terms in matrix multiplication gradients.
+- Avoid float16 overflow in `square()` and `power()` backward.
+- Use input precision for mean gradients with narrow outputs.
+- Run backward through mixed copy and in-place ReLU chains without recursion.
+- Fix float16 and wide-range float32 CUDA uniform sampling.
+- Preserve Boolean ReLU dtype and update the device after an in-place ReLU move.
+- Check CUDA bounds for lists of scalar Tensor indices.
+- Prevent partial CPU writes when indexed assignment conversion fails.
+- Invalidate saved graphs after tensor data is replaced.
+- Accumulate broadcast gradients in sufficient precision for the input dtype.
+- Apply `sum()` initial values before narrowing CUDA output.
+- Accept a one-element output tuple in masked CUDA pointwise operations.
+- Preserve uniform sampling across wide float64 ranges.
+- Accept disjoint interleaved CPU output buffers.
+- Build lowercase wheels from either source directory spelling.
+- Widen mixed-precision gradients before arithmetic and matrix multiplication.
+- Avoid signed integer exponent wrap in `power()` backward.
+- Avoid divisor overflow in CUDA float16 `mean()`.
+- Check overlap for the elements written by CPU indexing and for interleaved CUDA outputs.
+- Invalidate active results after augmented `.data` writes.
+- Restore built-in `abs()` and reject unsupported device names.
+- Use a shared working dtype for backward arithmetic and reductions.
+- Widen saved floating values for derivatives while preserving forward rounding.
+- Keep backward seeds and contributions at working precision until storing `.grad`.
+- Save slice bounds, scalar indices, and reduction arguments during forward.
+- Use the same code to save Boolean masks for pointwise operations, reductions, and `where()`.
+- Update versions and clear incompatible gradients when replacing `.data`.
+- Normalize reduction axes, masks, and identity checks before CPU and CUDA dispatch.
+- Share `out` checks. Compute into a temporary buffer before writing to `out`.
+- Accept singleton output tuples in reductions and preserve exact integer maxima before casting.
+- Accept element indices in `Tensor.item()`.
+- Keep the existing Ruff rules in CI.
+- Attach provenance to the versioned release.
 
 ## [2.9.0rc3] - 2026-03-29
 
 ### Added
 
-- Integrated a C++ backend replacing current Pythonic implementations in DepthML.
+- Add a C++ backend to replace the Python implementation in DepthML.
 
 ### Changed
 
-- Changed package initialization by explicitly declaring the public API in `__init__.py` files.
+- List public names in `__init__.py`.
 
-- Removed outer quote character reusing in f-strings for compatibility with Python 3.8 syntax.
+- Avoid reusing the outer quote inside f-strings for Python 3.8.
 
 ## [2.8.0] - 2026-02-08
 
 ### Fixed
 
-- Fixed `Tensor.where` logic to correctly infer `requires_grad` from inputs, enabling gradient propagation through conditional selection.
+- Infer `requires_grad` from the inputs to `Tensor.where()`.
 
 ### Added
 
-- Added convenience element-wise methods to `Tensor` class: `sqrt`, `square`, `log`, `exp`, `sign`, `abs`, `neg`.
-  - These methods support `out`, `device`, `in_place`, and other standard NumPy/CuPy arguments.
-  
-  - These methods contain documentation.
-
-- Added `__abs__` dunder method to `Tensor`.
-
-- Comprehensive unit test suite covering:
-  - Tensor initialization and properties.
-  - Forward/Backward operations for arithmetic, reduction, and element-wise ops.
-  - New Tensor methods and in-place safety.
+- Add elementwise `Tensor` methods `sqrt`, `square`, `log`, `exp`, `sign`, `abs`, and `neg`. They support `out`, `device`, `in_place`, and other NumPy/CuPy arguments.
+- Add `Tensor.__abs__()`.
+- Test tensor creation, properties, arithmetic, reductions, elementwise operations, backward, and in-place operations.
 
 ## [2.7.0] - 2026-02-07
 
 ### Fixed
 
-- Significantly improved performance of internal Tensor creation and operations by implementing a fast initialization path (`Tensor._fast_init`), bypassing redundant checks for internal operations. This results in ~4x speedup for lightweight operations.
+- Skip repeated checks in `Tensor._fast_init()`. Lightweight operations were about 4× faster.
 
-- Fixed a bug in `Tensor.sum` and `Tensor.max` (and their functional counterparts) where the `initial` argument was incorrectly ignored or caused crashes due to incorrect default value handling. A new internal `NoValue` sentinel is now used.
+- Use `NoValue` to distinguish a missing `initial` from `None` in `sum()` and `max()`.
 
 ### Documentation
 
-- Integrated comprehensive NumPy-style docstrings across the codebase, including `Tensor` class methods, autodifferentiation engine (`autodiff.py`), and core operations (`ops/`), improving code readability and developer experience.
+- Add NumPy-style docstrings to `Tensor` methods, `autodiff.py`, and `ops/`.
 
 ## [2.6.0] - 2026-01-11
 
 ### Fixed
 
-- Optimized the ```zero_grad``` method by filling the array (if already instantiated) instead of instantiating everytime.
+- Reuse the existing gradient array in `zero_grad()`.
 
-- Some internal functions are optimized by caching variables.
+- Reuse operand type checks for device selection and gradient tracking.
 
 
 ### Changed
 
 - ```dt.random.uniform()``` now accepts a ```dtype``` argument, which defaults to ```float32```.
 
-- Printing tensors now shows the ```requires_grad``` attribute for verbosity.
+- Show `requires_grad` when printing tensors.
 
 
 ## [2.5.1] - 2026-01-10
 
 ### Fixed
 
-- A bug where the ```prev``` attribute is only initialized upon differentiation.
+- Initialize `prev` before differentiation.
 
 ## [2.5.0] - 2026-01-08
 
 ### Added
 
-- A ```name``` attribute in tensor objects assisting in debugging.
+- Add `Tensor.name` for debugging.
 
-- Added a method ```set_name```, which returns the tensor object itself and sets the object's ```name``` attribute.
+- Add `set_name()` to set the name and return the tensor.
 
-- Added a differentiable method ```transpose`` which tranposes the tensor object.
+- Add `transpose()` with gradient support.
 
-- The slicing operation can now be differentiable.
+- Support gradients through slicing.
 
 ### Changed
 
-- Changed the method ```Tensor.zeros_grad()``` to ```Tensor.zero_grad()``` as it is more conventional.
+- Rename `Tensor.zeros_grad()` to `Tensor.zero_grad()`.
 
-- Calling ```Tensor.zero_grad()``` now raises a run-time error for undifferentiable tensors.
+- Raise `RuntimeError` in `Tensor.zero_grad()` when gradient tracking is disabled.
 
-- Operations, like ```Add, Subtract, or Multiply``` now behave like objects inheriting from the ```Function``` class.
+- Use `Function` subclasses for add, subtract, and multiply.
 
 ### Removed
 
-- Removed unary-related and binary-related protocols for creating custom differentiable functions, which now works via the class `Function`.
+- Replace custom unary and binary operation protocols with `Function`.
 
 ## [2.4.3] - 2025-12-18
 
 ### Fixed
- 
-- Fixed a bug where differentiating tensors does not automatically initialize the gradients of them.
 
-- Fixed a bug where the `max()` function errors due to the default `initial` argument being invalid.
+- Initialize gradients automatically during differentiation.
+
+- Fix the default `initial` value in `max()`.
 
 ### Changed
 
-- Custom binary differentiation functions now require explicit definition of the `device` argument.
+- Require `device` in custom binary backward functions.
 
 ## [2.4.2] - 2025-12-14
 
 ### Fixed
 
-- Fixed a potentially unwanted and unexpected behavior in gradient update of custom operation functions, where the previous default update behavior was accumulating the Hadamard product of the resulting node with the local derivatives (the domain of manual definition beyond which is unsupported) of the preceding nodes. Essentially: 
+- Add the gradients returned by custom backward functions directly. The previous update multiplied the returned value by the output gradient.
 
 $$
 \bar{x} := \bar{y} \odot f(y, x)
 $$
 
-- where $f(y, x)$ is manually defined by users.
+Here, $f(y, x)$ is the custom backward function.
 
 ## [2.4.1] - 2025-12-14
 
 ### Changed
 
-- Renamed ```TensorLike, DeviceLike, ScalarLike, ShapeLike, AxisLike, NDArrayLike, NDArrayLikeBool, OperandLike, cfunc_2in_1out_pro, cop_2in_1out_pro, cdiff_2in_1out_pro, cfunc_1in_1out_pro, cop_1in_1out_pro, cdiff_1in_1out_pro``` to ```TensorType, Device, Scalar, Shape, Axis, TensorData, TensorDataBool, TensorLike, BinaryFunc, BinaryOp, BinaryDiff, UnaryFunc, UnaryOp, UnaryDiff```, respectively, for easier typehinting.
+- Rename ```TensorLike, DeviceLike, ScalarLike, ShapeLike, AxisLike, NDArrayLike, NDArrayLikeBool, OperandLike, cfunc_2in_1out_pro, cop_2in_1out_pro, cdiff_2in_1out_pro, cfunc_1in_1out_pro, cop_1in_1out_pro, cdiff_1in_1out_pro``` to ```TensorType, Device, Scalar, Shape, Axis, TensorData, TensorDataBool, TensorLike, BinaryFunc, BinaryOp, BinaryDiff, UnaryFunc, UnaryOp, UnaryDiff```, in that order.
 
 ## [2.4.0] - 2025-12-14
 
 ### Added
 
-- A method ```item()``` that returns the item of the ```numpy``` or ```cupy``` data.
+- Add `Tensor.item()` to return an array element as a scalar.
 
-- ```differentiate()``` function now accepts ```grad``` argument which allows manually setting the gradient stream source.
+- Add a `grad` argument to `differentiate()` to set the initial gradient.
 
 ## [2.3.1] - 2025-12-10
 
 ### Fixed
 
-- A critical bug related to autograd which raises a ```GradientComputationError``` exception when encountering a tensor that is not differentiable. This means that unrelated data such as datasets, X, had to be differentiable.
-
-### Added
-
-- The differentiate function now accepts
+- Allow backward when inputs have gradient tracking disabled.
 
 ## [2.3.0] - 2025-12-04
 
 ### Added
 
-- Added a method ```mean()```, which outputs differentiable tensors, in the ```Tensor``` class.
+- Add `Tensor.mean()` with gradient support.
 
 ### Fixed
 
--  A bug where differentiating tensors that resulted from 1-input-1-output operations, e.g. $y = f(x)$, bugs out due to an oversight in device management.
+- Fix device selection in backward for unary operations.
 
 ## [2.2.1] - 2025-11-26
 
 ### Fixed
 
-- A bug where it is possible to perform in-place operations on differentiable tensors in computational graphs, which can lead to unexpected behaviors related to gradients. Now in-place operations ```iadd```, ```isub```, etc., and notably ```setitem``` would raise a `RunTimeError` exception on differentiable tensors.
+- Raise `RuntimeError` for in-place operations on tensors that track gradients, including indexed assignment.
 
 ## [2.2.0] - 2025-10-5
 
 ### Added
 
-- New functions ```zeros()``` and ```ones()```.
+- Add `zeros()` and `ones()`.
 
 ## [2.1.0] - 2025-09-4
 
 ### Added
 
-- Gradient optimization where it is only initialized when the tensor unit is about to perform differentiation.
+- Allocate gradients when backward reaches a tensor.
 
 ### Changed
 
-- Different implementations for ```DTensor.random.rand()``` and ```DTensor.random.randn()``` which boost performance.
+- Speed up `DTensor.random.rand()` and `DTensor.random.randn()`.
 
 ### Fixed
 
-- Minor fix in code of several functions that boosts performance as type casting relies less on ```arr.astype()```. 
+- Reduce repeated calls to `astype()`.
 
 ## [2.0.2] - 2025-09-2
 
 ### Fixed
 
-- Fixed the way tensor instantiation handles device. Prior to this change, putting a ```cupy.ndarray``` into the non-positional argument, while leaving the ```device``` argument blank, results in a tensor of which the ```grad``` attribute is a ```numpy.ndarray``` instead of ```cupy.ndarray``` as expected.
+- Keep gradients on the GPU when creating a tensor from a CuPy array without specifying `device`.
 
 ## [2.0.1] - 2025-09-2
 
 ### Fixed
 
-- Fixed the way that devices are handled in built-in differentiable functions (```square()```, ```add()```, etc.).
+- Fix device selection in operations such as `square()` and `add()`.
 
 ## [2.0.0] - 2025-09-1
 
 ### Fixed
 
-- Some functions' parameters of which ```device```, in particular, defaults to ```"cpu"```, which causes unwanted behavior. It is now defaulted to ```None```.
+- Default `device` to `None` so operations can use the operand devices.
 
 ### Changed
 
-- Some functions such as ```Tensor.square()```, ```Tensor.add()```, etc. are now only accessible via the ```DepthTensor``` package. An example would be ```DepthTensor.square()```.
+- Move operations such as `Tensor.square()` and `Tensor.add()` to the `DepthTensor` module.
 
 ## [1.12.0] - 2025-08-29
 
 ### Added
 
-- Keywords arguments in diff functions used for ```create_2in_1out``` and ```create_1in_1out```, enabling further customization.
+- Accept keyword arguments in the backward functions for `create_2in_1out()` and `create_1in_1out()`.
 
 ## [1.11.1] - 2025-08-29
 
 ### Fixed
 
-- Generator function produced by either ```create_2in_1out``` or ```create_1in_1out``` has their ```device``` arguments defaulting to ```"cpu"```, which introduces unwanted behaviors. The parameters now default to ```None```.
+- Default `device` to `None` for operations created with `create_2in_1out()` or `create_1in_1out()`.
 
 ## [1.11.0] - 2025-08-28
 
 ### Fixed
 
-- Instantiating tensors with non-numerical values now results in an error.
+- Reject nonnumeric tensor inputs.
 
-- Some computation functions, such as add or subtract, might output tensors of unexpected devices adhering to the device parameter having a default value of "cpu" (now defaults to None as of these occurrences,) leading to two gpu tensors outputting a cpu tensor.
+- Keep results of operations such as add and subtract on the GPU when both inputs are on the GPU and `device` is omitted.
 
 ### Added
 
-- Added method ```Tensor.make_differentiable()``` which transforms (in-place) a tensor into a differentiable one.
+- Add `Tensor.make_differentiable()` to enable gradient tracking in place.
 
-- Added method ```Tensor.to_device()``` which either transforms (in-place) a tensor into another of given device, or creates a copy of given device.
+- Add `Tensor.to_device()` to move a tensor in place or return a copy on the requested device.
 
 ### Removed
 
-- Type Alias (in DepthTensor.typing) ```AxisShapeLike``` as ```ShapeLike``` already does the job.
+- Remove `AxisShapeLike`. Use `ShapeLike`.
 
 ### Changed
 
-- Type Aliases (in DepthTensor.typing) ```ArrayLike``` and ```ArrayLikeBool``` to ```NDArrayLike``` and ```NDArrayLikeBool```, respectively.
+- Rename `ArrayLike` to `NDArrayLike` and `ArrayLikeBool` to `NDArrayLikeBool`.
 
-- Some computational functions now have the ```device``` arguments defaulting to ```None```.
+- Default `device` to `None` in more operations.
 
 ## [1.10.0] - 2025-08-28
 
 ### Added
 
-- Function ```DepthTensor.create_2in_1out()``` which returns a generator function that allows custom implemented operations of two operands with custom differentiations.
-
-- Function ```DepthTensor.create_1in_1out()``` which returns a generator function that allows custom implemented operations of one operand with custom differentiations.
+- Add `DepthTensor.create_2in_1out()` and `DepthTensor.create_1in_1out()` for custom binary and unary operations with backward functions.
 
 ## [1.9.0] - 2025-08-28
 
 ### Added
 
-- Additional ```requires_grad``` parameter for static method ```Tensor.where()```.
+- Add `requires_grad` to `Tensor.where()`.
 
 ## [1.8.0] - 2025-08-27
 
 ### Added
 
-- Additional ```requires_grad``` parameter for static method ```Tensor.clip()```.
+- Add `requires_grad` to `Tensor.clip()`.
 
 ### Fixed
 
-- Gradient miscalculation in the square operation.
+- Fix gradients for `square()`.
 
-- Output tensors' ```requires_grad``` attributes now adheres to operand tensors'.
+- Set `requires_grad` from the inputs.
 
 ### Changed
 
-- Differentiation now does not require both operands as tensor objects, which means that ```tensor**2``` is now differentiable.
+- Support gradients when only one operand is a tensor, as in `tensor**2`.
 
-- Operations now return tensors of which ```prev``` attributes contain only tensors.
+- Store only tensors in `prev`.
 
 ## [1.7.0] - 2025-08-26
 
 ### Added
 
-- Additional ```requires_grad``` parameter for function ```random.rand()```.
-
-- Additional ```requires_grad``` parameter for function ```random.randn()```.
-
-- Additional ```requires_grad``` parameter for function ```random.randint()```.
-
-- Additional ```requires_grad``` parameter for function ```random.uniform()```.
+- Add `requires_grad` to `random.rand()`, `randn()`, `randint()`, and `uniform()`.
 
 ## [1.6.0] - 2025-08-25
 
 ### Added
 
-- Additional ```requires_grad``` parameter for static method ```Tensor.zeros_like()```.
+- Add `requires_grad` to `Tensor.zeros_like()`, `ones_like()`, `max()`, `maximum()`, and `sum()`.
 
-- Additional ```requires_grad``` parameter for static method ```Tensor.ones_like()```.
+- Add `Tensor.copy()`.
 
-- Additional ```requires_grad``` parameter for static method ```Tensor.max()```.
-
-- Additional ```requires_grad``` parameter for static method ```Tensor.maximum()```.
-
-- Additional ```requires_grad``` parameter for static method ```Tensor.sum()```.
-
-- Method ```Tensor.copy()``` which copies tensors.
-
-- Method ```Tensor.to_device()``` returns a copy of which attribute ```device``` 
+- Add `Tensor.to_device()` to copy a tensor to the requested device.
 
 ## [1.5.0] - 2025-08-24
 
 ### Added
 
-- Dunder method ```Tensor.__getitem__()```, enabling entry access without directing to ```data``` attribute.
+- Read and write tensor elements directly with `__getitem__()` and `__setitem__()`.
 
-- Dunder method ```Tensor.__setitem__()```, enabling entry overwriting without directing to ```data``` attribute.
-
-- Dunder method ```Tensor.__iter__()```, enabling iteratable tensor objects.
+- Make tensors iterable with `__iter__()`.
 
 
 ## [1.4.0] - 2025-08-23
 
 ### Added
 
-- Dunder method ```Tensor.__pow__()```, along with static method ```Tensor.power()```, with differentiation functionalities.
-
-- Static methods ```Tensor.log()``` and ```Tensor.square()``` with differentiation functionalities.
+- Add `Tensor.__pow__()`, `Tensor.power()`, `Tensor.log()`, and `Tensor.square()` with gradient support.
 
 ## [1.3.1] - 2025-08-22
 
 ### Changed
 
-- Comparison dunder methods now accept regular datatypes as opposed to primarily tensors.
+- Accept non-Tensor operands in comparison operators.
 
 ### Fixed
 
-- Initial argument values handled correctly for some functions.
+- Fix `initial` handling in reductions.
 
 ## [1.2.1] - 2025-08-21
 
 ### Fixed
 
-- Operation matmul bug where argument where was given.
+- Fix `matmul()` when `where` is passed.
 
 ## [1.2.0] - 2025-08-20
 
 ### Added
-- Device parameters in comparison/creation/elementwise/reduction functions.
-- New type alias: OperandLike
+- Add `device` to comparison, creation, elementwise, and reduction functions.
+- Add the `OperandLike` type alias.
 
 ### Changed
-- Computational functions now accept regular datatypes (the kinds that NumPy also accepts), as opposed to only tensors.
+- Accept NumPy-compatible inputs in tensor operations.

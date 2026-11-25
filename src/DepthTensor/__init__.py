@@ -55,7 +55,7 @@ from ._core.ops.elementwise import (
 )
 
 from ._core.ops.function import Function
-from ._core.random.generator import random, rand, randint, randn
+from ._core.random.generator import random, rand, randint, randn, uniform
 
 from ._core.exceptions import (
     CuPyNotFound,
@@ -70,8 +70,9 @@ from ._core.exceptions import (
 
 from ._core.nn.functional.activation_functions import relu
 from .enum.initialize_grad import InitializeGrad
+from ._core import utils
 
-__version__ = "2.9.0rc3"
+__version__ = "3.0.0"
 
 __all__ = [
     # Core Tensor
@@ -135,6 +136,7 @@ __all__ = [
     "rand",
     "randint",
     "randn",
+    "uniform",
     # Exceptions
     "CuPyNotFound",
     "CUPY_NOT_FOUND_MSG",
@@ -148,4 +150,6 @@ __all__ = [
     "relu",
     # Enums
     "InitializeGrad",
+    # Utils,
+    "utils"
 ]

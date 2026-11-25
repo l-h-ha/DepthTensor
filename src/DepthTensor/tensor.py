@@ -1,4 +1,6 @@
 from __future__ import annotations
+from contextlib import contextmanager
+from operator import index as _integer_index
 from typing import Any, Callable, Iterator
 
 from .typing import (
@@ -13,7 +15,13 @@ from .typing import (
     Axis,
 )
 
-from ._core.exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG, GradientComputationError
+from ._core.exceptions import (
+    CuPyNotFound,
+    CUPY_NOT_FOUND_MSG,
+    GradientComputationError as GradientComputationError,
+)
+from ._core.indexing import _check_cuda_index_bounds, _prepare_index, _write_index
+from ._core.ops.function import _ChainedBackward
 from ._core.ops.elementwise import (
     add,
     subtract,
@@ -28,6 +36,8 @@ from ._core.ops.elementwise import (
     square,
     exp,
     log,
+    abs,
+    sign,
 )
 
 from ._core.ops.comparison import (
@@ -45,7 +55,15 @@ from ._core.ops.reduction import (
     sum,
 )
 
+from ._core.storage import _mark_external_write, _mark_out_modified, _register_tensor, _shares_storage
 from ._core.utils import (
+    _accumulate_operand_grad,
+    _backward_active,
+    _cast_gradient_work,
+    _check_device,
+    _check_value_dtype,
+    _gradient_accumulator,
+    _backward_compute_dtype,
     get_device,
     to_tensordata,
     tensordata_to_device,
@@ -60,62 +78,93 @@ try:
 except (ModuleNotFoundError, ImportError):
     cp = None
 
-###
-###
-###
+def _check_grad_dtype(dtype: np.dtype) -> None:
+    if dtype.kind != "f":
+        raise RuntimeError(f"Gradients require a floating-point dtype. Got {dtype}.")
 
+def _check_grad_compatibility(
+    grad: TensorData, data: TensorData, device: Device
+) -> tuple[bool, str]:
+    mismatches = []
+    if get_device(grad) != device:
+        mismatches.append("device")
 
-def _infer_differentiation_status(a: Tensor, b: TensorLike) -> bool:
-    if isinstance(b, Tensor):
-        return a.requires_grad or b.requires_grad
-    return a.requires_grad
+    if grad.shape != data.shape:
+        mismatches.append("shape")
 
+    if grad.dtype != data.dtype:
+        mismatches.append("dtype")
 
-def _check_grad_compatibility(grad: TensorData, tensor: Tensor) -> tuple[bool, str]:
-    a = get_device(grad) == tensor.device
-    b = grad.shape == tensor.shape
-    c = grad.dtype == tensor.dtype
+    return not mismatches, ", ".join(mismatches)
 
-    incompatibility = ""
+class _CopyBackward(_ChainedBackward):
+    def __init__(
+        self,
+        source: Tensor,
+        result: Tensor,
+        data: TensorData,
+        previous_backward: Callable[[], None],
+    ) -> None:
+        self.source = source
+        self.result = result
+        self.data = data
+        self.device = source.device
+        self.previous_backward = previous_backward
 
-    if not a:
-        incompatibility += "device, "
-    if not b:
-        incompatibility += "shape, "
-    if not c:
-        incompatibility += "dtype, "
+    @contextmanager
+    def _use_saved_output(self) -> Iterator[None]:
+        source, result = self.source, self.result
+        if result.grad is None:
+            result.zero_grad()
 
-    incompatibility = incompatibility[:-2]
-    return a and b and c, incompatibility
+        source_dtype, result_dtype = self.data.dtype, result.dtype
+        preserve_work_dtype = _backward_active.get() and source_dtype == result_dtype
+        if _backward_active.get():
+            if preserve_work_dtype:
+                source_dtype = result.grad.dtype
+            else:
+                source_dtype = _backward_compute_dtype(source_dtype)
+                result_dtype = _backward_compute_dtype(result_dtype)
 
+        grad = _cast_gradient_work(to_tensordata(result.grad, self.device), source_dtype, copy=True)
 
-###
-###
-###
+        # Backward callbacks capture the original output.
+        state = source.data, source.grad, source.device, source.requires_grad
+        try:
+            object.__setattr__(source, "data", self.data)
+            source.grad = grad
+            source.device = self.device
+            source.requires_grad = True
 
+            yield
+
+            if source.grad is not None and source.grad is not grad:
+                result_grad = to_tensordata(source.grad, result.device)
+                result.grad = (
+                    result_grad if preserve_work_dtype else _cast_gradient_work(result_grad, result_dtype)
+                )
+        finally:
+            object.__setattr__(source, "data", state[0])
+            source.grad, source.device, source.requires_grad = state[1:]
 
 class Tensor:
     """
-    A multi-dimensional array (tensor) with automatic differentiation support.
-
-    This class provides a wrapper around NumPy and CuPy arrays, enabling
-    CUDA acceleration and automatic gradient computation.
+    NumPy or CuPy data with optional autograd.
 
     Attributes
     ----------
     data : TensorData
-        The underlying data of the tensor (numpy.ndarray or cupy.ndarray).
+        NumPy or CuPy array. Assignments like `tensor.data += x` can invalidate results needed for backward.
     device : Device
-        The device where the tensor data resides ('cpu' or 'cuda').
+        Storage device.
     grad : TensorData | None
-        The gradient of the tensor. None if no gradient is computed.
+        Accumulated gradient.
     grad_fn : Callable[[], None] | None
-        The function that updates the parent tensor's gradient. None if no
-        gradient is computed.
+        Backward callback.
     requires_grad : bool
-        Whether the tensor requires gradient computation.
+        Gradient tracking.
     name : str
-        Optional name for the tensor.
+        Optional tensor name.
     """
 
     data: TensorData
@@ -124,6 +173,10 @@ class Tensor:
     grad_fn: Callable[[], None] | None
     requires_grad: bool
     name: str
+    _version_counter: list[int]
+
+    # Defer ndarray operators to the Tensor's reflected methods.
+    __array_priority__ = 1000
 
     def __init__(
         self,
@@ -137,54 +190,69 @@ class Tensor:
         name: str = "",
     ) -> None:
         """
-        Initialize a Tensor object.
+        Create a tensor.
 
         Parameters
         ----------
         obj : TensorLike
-            The data to initialize the tensor with. Can be a list, tuple,
-            numpy array, cupy array, or another Tensor.
+            Scalar, array-like value, or tensor.
         dtype : DTypeLike | None, optional
-            The desired data type of the tensor. If None, it is inferred from `obj`.
+            Data dtype. Inferred if None.
         device : Device | None, optional
-            The device to place the tensor on ('cpu' or 'cuda'). If None,
-            it is inferred from `obj`.
+            Storage device. Inferred if None.
         prev : tuple, optional
-            Previous tensors in the computation graph (used for autodiff).
-            Default is empty tuple.
+            Graph parents.
         requires_grad : bool, optional
-            Whether the tensor requires gradient computation. Default is False.
+            Track gradients.
         name : str, optional
-            Optional name for the tensor. Default is empty string.
+            Tensor name.
+
+        Raises
+        ------
+        ValueError
+            Unsupported device.
+        RuntimeError
+            Complex data and gradients on non-floating tensors are unsupported.
         """
-        # Device init
         if device is None:
             self.device = get_device(obj)
         else:
             self.device = device
 
-        # Data init
-        if isinstance(obj, Tensor):
-            self.data = obj.data
-        elif isinstance(obj, np.ndarray):
-            self.data = obj
-        elif cp is not None and isinstance(obj, cp.ndarray):
-            self.data = obj
-        else:
-            self.data = to_tensordata(obj, self.device)
+        self.data = to_tensordata(obj, self.device, dtype=dtype)
 
-        # Conversion
-        if dtype is not None and dtype != self.data.dtype:
-            self.data = self.data.astype(dtype)
-        if get_device(self.data) != self.device:
-            self.data = tensordata_to_device(self.data, self.device)
+        if requires_grad:
+            _check_grad_dtype(self.data.dtype)
 
-        # Other inits
         self.prev = prev
         self.requires_grad = requires_grad
         self.grad_fn = None
         self.grad = None
         self.name = name
+
+        if isinstance(obj, Tensor) and self.data is obj.data:
+            self._version_counter = obj._version_counter
+        else:
+            self._version_counter = [0]
+
+        _register_tensor(self)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "data" and "_version_counter" in self.__dict__:
+            if value is self.data:
+                _mark_external_write(value)
+                return
+
+            data = to_tensordata(value)
+            if self.requires_grad and (self.prev or self.grad_fn is not None):
+                raise RuntimeError("Cannot replace data on a differentiable result.")
+            self._replace_data(data)
+            return
+
+        if name in ("data", "grad") and value is not None:
+            _check_value_dtype(value)
+
+        object.__setattr__(self, name, value)
 
     @classmethod
     def _fast_init(
@@ -195,71 +263,106 @@ class Tensor:
         prev: tuple = (),
         name: str = "",
     ) -> Tensor:
+        if isinstance(data, np.generic):
+            data = np.asarray(data)
+
         obj = object.__new__(cls)
         obj.data = data
+        if requires_grad:
+            _check_grad_dtype(data.dtype)
+
         obj.device = device
         obj.requires_grad = requires_grad
         obj.prev = prev
         obj.grad = None
         obj.grad_fn = None
         obj.name = name
+        obj._version_counter = [0]
+
+        _register_tensor(obj)
         return obj
+
+    @property
+    def _version(self) -> int:
+        return self._version_counter[0]
+
+    @_version.setter
+    def _version(self, version: int) -> None:
+        self._version_counter[0] = version
+
+    def _replace_data(self, data: TensorData, *, aliases: tuple[Tensor, ...] = ()) -> None:
+        if isinstance(data, np.generic):
+            data = np.asarray(data)
+
+        _check_value_dtype(data)
+        device = get_device(data)
+
+        if self.requires_grad:
+            if device != self.device:
+                raise RuntimeError("In-place device changes are forbidden on differentiable tensors.")
+            _check_grad_dtype(data.dtype)
+
+        clear_grad = (
+            self.grad is not None and not _check_grad_compatibility(self.grad, data, device)[0]
+        )
+
+        same_data = self.data is data
+        object.__setattr__(self, "data", data)
+        self.device = device
+
+        if not same_data:
+            # Old aliases retain their version counter.
+            self._version_counter = [self._version]
+        self._version += 1
+
+        if clear_grad:
+            self.grad = None
+
+        _mark_out_modified(aliases, replaced=self)
+
+    def _check_backward_version(self, source_version: int) -> None:
+        if self._version != source_version:
+            raise RuntimeError("Tensor needed for backward was modified by an in-place operation.")
+
+    def _fill_grad(self, value: int) -> None:
+        if not self.requires_grad:
+            raise RuntimeError("Cannot initialize gradients on an undifferentiable tensor.")
+
+        if self.grad is None:
+            dtype = _backward_compute_dtype(self.dtype) if _backward_active.get() else self.dtype
+            xp = np if self.device == "cpu" else cp
+            if xp is None:
+                raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+
+            self.grad = xp.full_like(self.data, value, dtype=dtype)
+        else:
+            self.grad.fill(value)
 
     def zero_grad(self) -> None:
         """
-        Sets the gradients of the tensor to zeros.
+        Reset the gradient to zeros.
 
         Raises
         ------
         RuntimeError
-            If the tensor does not require gradients.
+            Tracking is disabled.
         CuPyNotFound
-            If the device is 'cuda' and CuPy is not available.
+            CUDA storage requires CuPy.
         """
-        if not self.requires_grad:
-            raise RuntimeError(
-                "Attempted to zero-gradient initialize an undifferentiable tensor."
-            )
-        if self.grad is None:
-            if self.device == "cpu":
-                grad = np.zeros_like(self.data)
-            else:
-                if cp is None:
-                    raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-                grad = cp.zeros_like(self.data)
-            self.grad = grad
-        else:
-            self.grad.fill(0)
+        self._fill_grad(0)
 
     def one_grad(self) -> None:
         """
-        Sets the gradients of the tensor to ones.
+        Reset the gradient to ones.
 
         Raises
         ------
         RuntimeError
-            If the tensor does not require gradients.
+            Tracking is disabled.
         CuPyNotFound
-            If the device is 'cuda' and CuPy is not available.
+            CUDA storage requires CuPy.
         """
-        if not self.requires_grad:
-            raise RuntimeError(
-                "Attempted to zero-gradient initialize an undifferentiable tensor."
-            )
-        if self.grad is None:
-            if self.device == "cpu":
-                grad = np.ones_like(self.data)
-            else:
-                if cp is None:
-                    raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-                grad = cp.ones_like(self.data)
-            self.grad = grad
-        else:
-            self.grad.fill(1)
-
-    ###
-    ###
-    ###
+        self._fill_grad(1)
 
     def copy(
         self,
@@ -272,40 +375,47 @@ class Tensor:
         copy_grad: bool = False,
     ) -> Tensor:
         """
-        Return a copy of the tensor.
+        Copy the tensor.
 
         Parameters
         ----------
-        order : {'C', 'F', 'A', 'K'}, optional
-            Controls the memory layout of the copy. 'C' means C-order,
-            'F' means Fortran-order, 'A' means 'F' if a is Fortran contiguous,
-            'C' otherwise. 'K' means match the layout of a as closely
-            as possible. Default is 'K'.
+        order : Order, optional
+            Memory layout. K keeps input order.
         dtype : DTypeLike | None, optional
-            The data type of the copy. If None, preserves the original dtype.
+            Copy dtype. None keeps the source dtype.
         device : Device | None, optional
-            The device for the copy. If None, preserves the original device.
+            Copy device. None keeps the source device.
         copy_prev : bool, optional
-            Whether to copy the computation graph history. Default is False.
+            Keep history if the copy tracks gradients.
         copy_requires_grad : bool, optional
-            Whether to copy the requires_grad flag. Default is False.
+            Preserve gradient tracking.
         copy_grad : bool, optional
-            Whether to copy the gradients. Default is False.
+            Copy gradients to separate storage.
 
         Returns
         -------
         Tensor
-            A copy of the tensor.
+            Copied tensor.
         """
+        saved_data = self.data.copy(order=order)
+        requires_grad = copy_requires_grad and self.requires_grad
         t = Tensor(
-            self.data.copy(order=order),
+            saved_data,
             dtype=self.dtype if dtype is None else dtype,
             device=self.device if device is None else device,
-            prev=self.prev if copy_prev else (),
-            requires_grad=self.requires_grad if copy_requires_grad else False,
+            prev=self.prev if copy_prev and requires_grad else (),
+            requires_grad=requires_grad,
         )
-        if copy_grad:
-            t.grad = self.grad
+
+        if copy_grad and self.grad is not None:
+            t.grad = to_tensordata(self.grad, t.device).astype(t.dtype, order=order, copy=True)
+
+        original_backward = self.grad_fn
+        if copy_prev and t.requires_grad and original_backward is not None:
+            if t.data is saved_data:
+                saved_data = saved_data.copy(order=order)
+            t.grad_fn = _CopyBackward(self, t, saved_data, original_backward)
+
         return t
 
     def toggle_grad(
@@ -314,171 +424,185 @@ class Tensor:
         initialize_grad: InitializeGrad = InitializeGrad.NONE,
     ) -> None:
         """
-        Toggles whether the tensor requires gradient computation.
+        Set gradient tracking. Disabling clears gradients and history.
 
         Parameters
         ----------
-
         state : bool | None, optional
-            Whether to toggle the requires_grad flag. Default is None.
-            If None, the requires_grad flag is toggled (True -> False, False -> True).
-
-        initialize_grad : InitializeGrad
-            Gradient initialization mode. Default is `InitializeGrad.NONE`.
-
+            Tracking state. None flips it.
+        initialize_grad : InitializeGrad, optional
+            Initialize gradients to zeros or ones when enabling tracking.
 
         Raises
         ------
         RuntimeError
-            If the tensor's gradient is not compatible with the tensor in terms of shape, device, or dtype.
+            Unsupported dtype or incompatible stored gradient.
         """
-        if state is None:
-            self.requires_grad = not self.requires_grad
-        else:
-            self.requires_grad = state
+        enabled = not self.requires_grad if state is None else state
+        if not enabled:
+            self.requires_grad = False
+            self.grad = None
+            self.grad_fn = None
+            self.prev = ()
+            return
 
-        if self.requires_grad:
-            # * Toggle from False to True.
-            if self.grad is not None:
-                comp_status, incomp = _check_grad_compatibility(self.grad, self)
-                if not comp_status:
-                    raise RuntimeError(
-                        f"Incompability between tensor and its gradient in terms of: {incomp}"
-                    )
+        _check_grad_dtype(self.dtype)
+        if self.grad is not None:
+            compatible, mismatches = _check_grad_compatibility(self.grad, self.data, self.device)
+            if not compatible:
+                raise RuntimeError(f"Gradient mismatch in {mismatches}.")
 
-            if initialize_grad == InitializeGrad.ZEROS:
-                self.zero_grad()
-            elif initialize_grad == InitializeGrad.ONES:
-                self.one_grad()
-            elif initialize_grad == InitializeGrad.NONE:
-                pass
-        else:
-            # * Toggle from True to False.
-            if self.grad is not None:
-                self.grad = None
-                self.grad_fn = None
+        self.requires_grad = True
+
+        if initialize_grad == InitializeGrad.ZEROS:
+            self.zero_grad()
+        elif initialize_grad == InitializeGrad.ONES:
+            self.one_grad()
+
+    def _link_transform_backward(
+        self, result: Tensor, inverse: Callable[[TensorData], TensorData] | None = None
+    ) -> Tensor:
+        if not result.requires_grad:
+            return result
+
+        source_version = self._version
+
+        def grad_fn() -> None:
+            if not self.requires_grad:
+                return
+
+            self._check_backward_version(source_version)
+
+            if result.grad is None:
+                result.zero_grad()
+            grad = result.grad if inverse is None else inverse(result.grad)
+            _accumulate_operand_grad(self, grad)
+
+        result.prev = (self,)
+        result.grad_fn = grad_fn
+        return result
 
     def to_device(
         self, device: Device, in_place: bool = False, clear_prev: bool = True
     ) -> Tensor:
         """
-        Moves the tensor to the specified device.
-
-        If `in_place` is `true` and:
-        - if `device` is the same as the object's device -> returns the object itself, regardless of `requires_grad`.
-        - if `device` is not the same as the object's device -> raises `RuntimeError`.
-
-        If `in_place` is `false` -> returns a new tensor on the specified device.
+        Move data between devices.
 
         Parameters
         ----------
         device : Device
-            The target device ('cpu' or 'cuda').
+            Destination device.
         in_place : bool, optional
-            Whether to perform the operation in-place. Default is False.
+            Move this tensor in place.
         clear_prev : bool, optional
-            Whether to clear the computation graph history. Default is True.
+            Detach the copy. False keeps the link to the source for backward.
 
         Returns
         -------
         Tensor
-            The tensor on the specified device.
+            Self for in-place moves, otherwise a copy.
 
         Raises
         ------
         RuntimeError
-            If in-place operation is attempted on a differentiable tensor.
+            In-place device change on a differentiable tensor.
+        ValueError
+            Unsupported device.
         """
-        if device == self.device:
-            if in_place:
-                return self
-            return self.copy()
-        else:
-            if in_place:
-                if self.requires_grad:
-                    raise RuntimeError(
-                        "In-place operations (device switch) are forbidden on differentiable tensors."
-                    )
+        _check_device(device)
 
-                self.device = device
-                self.prev = () if clear_prev else self.prev
-                self.data = tensordata_to_device(self.data, device=device)
+        if in_place:
+            if device == self.device:
                 return self
-            return self.copy(device=device)
+
+            if self.requires_grad:
+                raise RuntimeError(
+                    "In-place device changes are forbidden on differentiable tensors."
+                )
+
+            self._replace_data(tensordata_to_device(self.data, device=device))
+            if clear_prev:
+                self.prev = ()
+
+            return self
+
+        result = self.copy(device=device, copy_requires_grad=not clear_prev)
+        return self._link_transform_backward(result)
 
     def get_device(self) -> Device:
         """
-        Get the device of the tensor.
+        Return the storage device.
 
         Returns
         -------
         Device
-            The device of the tensor ('cpu' or 'cuda').
+            cpu or cuda.
         """
         return self.device
 
     def is_device(self, device: Device) -> bool:
         """
-        Check if the tensor is on the specified device.
+        Check the tensor's device.
 
         Parameters
         ----------
         device : Device
-            The device to check against.
+            Device to compare.
 
         Returns
         -------
         bool
-            True if the tensor is on the specified device, False otherwise.
+            True if the devices match.
         """
         return self.device == device
 
     def is_cpu(self) -> bool:
         """
-        Check if the tensor is on the CPU.
+        Check for CPU storage.
 
         Returns
         -------
         bool
-            True if the tensor is on the CPU, False otherwise.
+            True for CPU storage.
         """
         return self.device == "cpu"
 
     def is_cuda(self) -> bool:
         """
-        Check if the tensor is a CUDA tensor.
+        Check for CUDA storage.
 
         Returns
         -------
         bool
-            True if the tensor is a CUDA tensor, False otherwise.
+            True for CUDA storage.
         """
         return self.device == "cuda"
 
     def is_contiguous(self) -> bool:
         """
-        Check if the tensor is contiguous in memory.
+        Check for C-contiguous storage.
 
         Returns
         -------
         bool
-            True if the tensor is contiguous, False otherwise.
+            True for C-contiguous storage.
         """
         if self.is_cpu():
             return self.data.flags["C_CONTIGUOUS"]
         else:
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+
             return self.data.flags.c_contiguous
 
     def contiguous(self) -> Tensor:
         """
-        Creates a clone of the tensor with the data contiguous in memory.
+        Make the tensor C-contiguous.
 
         Returns
         -------
         Tensor
-            The tensor with contiguous memory.
+            Self if C-contiguous, otherwise a copy.
         """
         if self.is_contiguous():
             return self
@@ -488,207 +612,163 @@ class Tensor:
         else:
             new_data = cp.ascontiguousarray(self.data)
 
-        y = Tensor._fast_init(
+        result = Tensor._fast_init(
             new_data,
             device=self.device,
             requires_grad=self.requires_grad,
         )
-
-        if y.requires_grad:
-
-            def grad_fn() -> None:
-                if y.grad is None:
-                    y.zero_grad()
-                if self.grad is None:
-                    self.zero_grad()
-                self.grad += y.grad
-
-            y.prev = (self,)
-            y.grad_fn = grad_fn
-
-        return y
+        return self._link_transform_backward(result)
 
     def set_name(self, name: str) -> Tensor:
         """
-        Set the name of the tensor.
+        Set the tensor name.
 
         Parameters
         ----------
         name : str
-            The name to set.
+            New tensor name.
 
         Returns
         -------
         Tensor
-            The tensor itself (for method chaining).
+            Self.
         """
         self.name = name
         return self
 
-    def transpose(self, axes: Shape | None) -> Tensor:
+    def transpose(self, axes: Shape | None = None) -> Tensor:
         """
-        Permute the dimensions of the tensor.
+        Permute the axes.
 
         Parameters
         ----------
-        axes : Shape | None
-            A list of integers. By default, reverse the dimensions,
-            otherwise permute the axes according to the values given.
+        axes : Shape | None, optional
+            Axis permutation. None reverses the axes.
 
         Returns
         -------
         Tensor
-            The transposed tensor.
+            Transposed tensor.
 
         Raises
         ------
-        CuPyNotFound
-            If the device is 'cuda' and CuPy is not available.
+        ValueError
+            Invalid axis permutation.
         """
-        y = Tensor._fast_init(
+        result = Tensor._fast_init(
             self.data.transpose(axes),
             device=self.device,
             requires_grad=self.requires_grad,
         )
-        if y.requires_grad:
 
-            def grad_fn() -> None:
-                if y.grad is None:
-                    y.zero_grad()
-                if self.grad is None:
-                    self.zero_grad()
+        if _shares_storage(self.data, result.data):
+            result._version_counter = self._version_counter
 
-                if axes is None:
-                    self.grad += y.grad.transpose(None)  # type: ignore
-                else:
-                    if self.is_cpu():
-                        inverse_axes = np.argsort(axes)
-                    else:
-                        if cp is None:
-                            raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-                        inverse_axes = cp.argsort(axes)
-                    self.grad += y.grad.transpose(inverse_axes)  # type: ignore
+        if not result.requires_grad:
+            return result
 
-            y.prev = (self,)
-            y.grad_fn = grad_fn
-        return y
+        inverse_axes = None
+        if axes is not None:
+            normalized_axes = np.atleast_1d(axes) % self.ndim
+            inverse_axes = tuple(np.argsort(normalized_axes))
 
-    def backward(self, grad: TensorData | None = None) -> list[Tensor]:
+        return self._link_transform_backward(result, lambda grad: grad.transpose(inverse_axes))
+
+    def backward(self, grad: Tensor | TensorData | None = None) -> list[Tensor]:
         """
-        Compute the gradients of the tensor with respect to its ancestors.
-
-        This function performs reverse-mode automatic differentiation (backpropagation).
-        It traverses the computation graph backwards from the given tensor and
-        computes the gradients for all tensors that require gradients.
+        Backpropagate. Ancestor gradients accumulate on success.
+        Use at least float32 for temporary gradients. Store them in each tensor's dtype.
 
         Parameters
         ----------
-        grad : TensorData | None, optional
-            The gradient to seed the backward pass with. If None, it defaults to
-            ones with the same shape as `tensor`.
+        grad : Tensor | TensorData | None, optional
+            Seed matching the shape and device. None uses ones.
 
         Returns
         -------
         list[Tensor]
-            A list of tensors in the computation graph in topological order (reversed).
+            Graph nodes in parent-first order.
 
         Raises
         ------
         RuntimeError
-            If there is a mismatch in gradient device or shape.
+            Disabled tracking, incompatible seed, or a mutated operand.
         GradientComputationError
-            If a tensor in the graph is missing a backward function but requires gradients.
+            Cyclic graph or missing backward function.
         CuPyNotFound
-            If the device is 'cuda' and CuPy is not available.
+            CUDA storage requires CuPy.
         """
-        topo: list[Tensor] = []
-        visited: set[Tensor] = set()
+        from ._core.autograd import _backward
 
-        def build(t: Tensor):
-            if t in visited:
-                return
-            visited.add(t)
-
-            for prev in t.prev:
-                if isinstance(prev, Tensor):
-                    build(prev)
-            topo.append(t)
-
-        build(self)
-
-        if grad is not None:
-            if self.device != grad.device:
-                raise RuntimeError("Tensor's device does not match grad's device.")
-            if self.shape != grad.shape:
-                raise RuntimeError("Tensor's shape does not match grad's shape.")
-            self.grad = grad
-        else:
-            self.one_grad()
-
-        for t in reversed(topo):
-            if t.grad_fn is None:
-                if not t.requires_grad:
-                    continue
-                if len(t.prev) > 0:
-                    raise GradientComputationError(
-                        f"Tensor ({t})'s backward function is None."
-                    )
-                continue
-            t.grad_fn()
-        return topo
-
-    ###
-    ### Property
-    ###
+        return _backward(self, grad)
 
     @property
     def dtype(self) -> DTypeLike:
         """
-        Data type of the tensor's elements.
+        Element dtype.
         """
         return self.data.dtype
 
     @property
     def shape(self) -> Shape:
         """
-        Tuple of tensor dimensions.
+        Tuple of dimension sizes.
         """
         return self.data.shape
 
     @property
     def ndim(self) -> int:
         """
-        Number of tensor dimensions.
+        Number of dimensions.
         """
         return self.data.ndim
 
     @property
     def size(self) -> int:
         """
-        Number of elements in the tensor.
+        Number of elements.
         """
         self.item
         return self.data.size
 
-    def item(self, **kwargs: Any) -> Any:
+    def item(self, *indices: int | tuple[int, ...]) -> Any:
         """
-        Copy an element of an array to a standard Python scalar and return it.
+        Return one element as a Python scalar.
 
         Parameters
         ----------
-        **kwargs : Any
-            Arguments passed to the underlying item() method.
+        *indices : int or tuple of int, optional
+            Flat index or one per axis. Omit for a one-element tensor.
 
         Returns
         -------
         Any
-            The element as a standard Python scalar.
+            Python scalar.
         """
-        return self.data.item(**kwargs)
+        if self.device == "cpu" or not indices:
+            return self.data.item(*indices)
 
-    ###
-    ### Element-wise
-    ###
+        if len(indices) == 1 and isinstance(indices[0], tuple):
+            indices = indices[0]
+
+        if not indices:
+            return self.data.item()
+
+        if any(isinstance(index, (bool, np.bool_)) for index in indices):
+            raise TypeError("Indices must be integers.")
+
+        coordinates = tuple(_integer_index(index) for index in indices)
+
+        if len(coordinates) == 1:
+            flat_index = coordinates[0]
+            _check_cuda_index_bounds(flat_index, (self.size,))
+            coordinates = np.unravel_index(flat_index % self.size, self.shape)
+        elif len(coordinates) != self.ndim:
+            raise ValueError("Use a flat index or one per axis.")
+        else:
+            _check_cuda_index_bounds(coordinates, self.shape)
+
+        return self.data[coordinates].item()
 
     def clip(
         self,
@@ -697,8 +777,8 @@ class Tensor:
         /,
         out: TensorData | None = None,
         *,
-        requires_grad: bool = False,
-        device: Device = "cpu",
+        requires_grad: bool | None = None,
+        device: Device | None = None,
         where: TensorDataBool | bool = True,
         casting: Casting = "same_kind",
         order: Order = "K",
@@ -706,44 +786,41 @@ class Tensor:
         subok: bool = True,
     ) -> Tensor:
         """
-        Clip (limit) the values in the tensor.
+        Clamp each element.
 
         Parameters
         ----------
-        a_min : TensorLike
-            Minimum value.
-        a_max : TensorLike
-            Maximum value.
+        a_min : TensorLike | None
+            Lower bound. None leaves it open.
+        a_max : TensorLike | None
+            Upper bound. None leaves it open.
         out : TensorData | None, optional
-            The results will be placed in this array.
-        requires_grad : bool, optional
-            Whether the result requires gradient computation. Default is False.
-        device : Device, optional
-            The device to place the result on. Default is 'cpu'.
+            Destination array.
+        requires_grad : bool | None, optional
+            Track gradients. None infers tracking from the inputs.
+        device : Device | None, optional
+            Output device. None infers the device from the inputs.
         where : TensorDataBool | bool, optional
-            This condition is broadcast over the input. At locations where the
-            condition is True, the out array will be set to the ufunc result.
+            Broadcastable mask of elements to compute.
         casting : Casting, optional
-            Controls what kind of data casting may occur.
+            Casting policy.
         order : Order, optional
-            Controls the memory layout of the result.
+            Output memory layout.
         dtype : DTypeLike | None, optional
-            Overrides the data type of the result.
+            Output dtype.
         subok : bool, optional
-            If True, then sub-classes will be passed-through.
+            Allow array subclasses.
 
         Returns
         -------
         Tensor
-            A tensor with the elements of this tensor, but where values
-            < a_min are replaced with a_min, and those > a_max with a_max.
         """
         return clip(
             self,
             a_min,
             a_max,
             out=out,
-            requires_grad=requires_grad or self.requires_grad,
+            requires_grad=requires_grad,
             device=device,
             where=where,
             casting=casting,
@@ -763,35 +840,33 @@ class Tensor:
         device: Device | None = None,
         in_place: bool = False,
         where: TensorDataBool | bool = True,
-        requires_grad: bool = False,
+        requires_grad: bool | None = None,
     ) -> Tensor:
         """
-        Returns the average of the array elements.
+        Average selected elements.
 
         Parameters
         ----------
         axis : Axis | None, optional
-            Axis or axes along which the means are computed.
+            Reduction axes. None reduces all.
         dtype : DTypeLike | None, optional
-            Type to use in computing the mean.
+            Accumulator dtype.
         out : TensorData | None, optional
-            Alternate output array in which to place the result.
+            Destination array.
         keepdims : bool, optional
-            If this is set to True, the axes which are reduced are left
-            in the result as dimensions with size one.
+            Keep reduced axes with length one.
         device : Device | None, optional
-            The device to place the result on.
+            Output device. None infers the device from the inputs.
         in_place : bool, optional
-            Whether to perform the operation in-place.
+            Update this tensor.
         where : TensorDataBool | bool, optional
-            Elements to include in the mean.
-        requires_grad : bool, optional
-            If True, the resulting tensor will be differentiable.
+            Elements to include.
+        requires_grad : bool | None, optional
+            Track gradients. None infers tracking from the inputs.
 
         Returns
         -------
         Tensor
-            A new tensor containing the mean values.
         """
         return mean(
             self,
@@ -802,7 +877,7 @@ class Tensor:
             device=device,
             in_place=in_place,
             where=where,
-            requires_grad=requires_grad or self.requires_grad,
+            requires_grad=requires_grad,
         )
 
     def sqrt(
@@ -817,39 +892,35 @@ class Tensor:
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        requires_grad: bool = False,
+        requires_grad: bool | None = None,
     ) -> Tensor:
         """
-        Return the non-negative square-root of an array, element-wise.
+        Take elementwise square roots.
 
         Parameters
         ----------
         out : TensorData | None, optional
-            A location into which the result is stored. If provided, it must have
-            a shape that the inputs broadcast to.
+            Destination array.
         device : Device | None, optional
-            The device to place the result on.
+            Output device. None infers the device from the inputs.
         in_place : bool, optional
-            Whether to perform the operation in-place on the input tensor.
+            Update this tensor.
         where : TensorDataBool | bool, optional
-            This condition is broadcast over the input. At locations where the
-            condition is True, the `out` array will be set to the ufunc result.
+            Broadcastable mask of elements to compute.
         casting : Casting, optional
-            Controls what kind of data casting may occur.
+            Casting policy.
         order : Order, optional
-            The order of memory layout to use for the output.
+            Output memory layout.
         dtype : DTypeLike | None, optional
-            Overrides the data type of the result.
+            Output dtype.
         subok : bool, optional
-            If True, then sub-classes will be passed-through, otherwise
-            the returned array will be forced to be a base-class array.
-        requires_grad : bool, optional
-            If True, the resulting tensor will be differentiable.
+            Allow array subclasses.
+        requires_grad : bool | None, optional
+            Track gradients. None infers tracking from the inputs.
 
         Returns
         -------
         Tensor
-            A new tensor containing the square root of each element.
         """
         return sqrt(
             self,
@@ -861,7 +932,7 @@ class Tensor:
             order=order,
             dtype=dtype,
             subok=subok,
-            requires_grad=requires_grad or self.requires_grad,
+            requires_grad=requires_grad,
         )
 
     def square(
@@ -876,36 +947,35 @@ class Tensor:
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        requires_grad: bool = False,
+        requires_grad: bool | None = None,
     ) -> Tensor:
         """
-        Return the element-wise square of the input.
+        Square each element.
 
         Parameters
         ----------
         out : TensorData | None, optional
-            A location into which the result is stored.
+            Destination array.
         device : Device | None, optional
-            The device to place the result on.
+            Output device. None infers the device from the inputs.
         in_place : bool, optional
-            Whether to perform the operation in-place on the input tensor.
+            Update this tensor.
         where : TensorDataBool | bool, optional
-            Elements to include in the operation.
+            Broadcastable mask of elements to compute.
         casting : Casting, optional
-            Controls what kind of data casting may occur.
+            Casting policy.
         order : Order, optional
-            The order of memory layout to use for the output.
+            Output memory layout.
         dtype : DTypeLike | None, optional
-            Overrides the data type of the result.
+            Output dtype.
         subok : bool, optional
-            If True, then sub-classes will be passed-through.
-        requires_grad : bool, optional
-            If True, the resulting tensor will be differentiable.
+            Allow array subclasses.
+        requires_grad : bool | None, optional
+            Track gradients. None infers tracking from the inputs.
 
         Returns
         -------
         Tensor
-            A new tensor with the squared value of each element.
         """
         return square(
             self,
@@ -917,7 +987,7 @@ class Tensor:
             order=order,
             dtype=dtype,
             subok=subok,
-            requires_grad=requires_grad or self.requires_grad,
+            requires_grad=requires_grad,
         )
 
     def log(
@@ -932,36 +1002,35 @@ class Tensor:
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        requires_grad: bool = False,
+        requires_grad: bool | None = None,
     ) -> Tensor:
         """
-        Natural logarithm, element-wise.
+        Take elementwise natural logs.
 
         Parameters
         ----------
         out : TensorData | None, optional
-            A location into which the result is stored.
+            Destination array.
         device : Device | None, optional
-            The device to place the result on.
+            Output device. None infers the device from the inputs.
         in_place : bool, optional
-            Whether to perform the operation in-place on the input tensor.
+            Update this tensor.
         where : TensorDataBool | bool, optional
-            Elements to include in the operation.
+            Broadcastable mask of elements to compute.
         casting : Casting, optional
-            Controls what kind of data casting may occur.
+            Casting policy.
         order : Order, optional
-            The order of memory layout to use for the output.
+            Output memory layout.
         dtype : DTypeLike | None, optional
-            Overrides the data type of the result.
+            Output dtype.
         subok : bool, optional
-            If True, then sub-classes will be passed-through.
-        requires_grad : bool, optional
-            If True, the resulting tensor will be differentiable.
+            Allow array subclasses.
+        requires_grad : bool | None, optional
+            Track gradients. None infers tracking from the inputs.
 
         Returns
         -------
         Tensor
-            The natural logarithm of x, element-wise.
         """
         return log(
             self,
@@ -973,7 +1042,117 @@ class Tensor:
             order=order,
             dtype=dtype,
             subok=subok,
-            requires_grad=requires_grad or self.requires_grad,
+            requires_grad=requires_grad,
+        )
+
+    def abs(
+        self,
+        /,
+        out: TensorData | None = None,
+        *,
+        device: Device | None = None,
+        in_place: bool = False,
+        where: TensorDataBool | bool = True,
+        casting: Casting = "same_kind",
+        order: Order = "K",
+        dtype: DTypeLike | None = None,
+        subok: bool = True,
+        requires_grad: bool | None = None,
+    ) -> Tensor:
+        """
+        Take elementwise absolute values.
+
+        Parameters
+        ----------
+        out : TensorData | None, optional
+            Destination array.
+        device : Device | None, optional
+            Output device. None infers the device from the inputs.
+        in_place : bool, optional
+            Update this tensor.
+        where : TensorDataBool | bool, optional
+            Broadcastable mask of elements to compute.
+        casting : Casting, optional
+            Casting policy.
+        order : Order, optional
+            Output memory layout.
+        dtype : DTypeLike | None, optional
+            Output dtype.
+        subok : bool, optional
+            Allow array subclasses.
+        requires_grad : bool | None, optional
+            Track gradients. None infers tracking from the inputs.
+
+        Returns
+        -------
+        Tensor
+        """
+        return abs(
+            self,
+            out=out,
+            device=device,
+            in_place=in_place,
+            where=where,
+            casting=casting,
+            order=order,
+            dtype=dtype,
+            subok=subok,
+            requires_grad=requires_grad,
+        )
+
+    def sign(
+        self,
+        /,
+        out: TensorData | None = None,
+        *,
+        device: Device | None = None,
+        in_place: bool = False,
+        where: TensorDataBool | bool = True,
+        casting: Casting = "same_kind",
+        order: Order = "K",
+        dtype: DTypeLike | None = None,
+        subok: bool = True,
+        requires_grad: bool | None = None,
+    ) -> Tensor:
+        """
+        Return each element's sign.
+
+        Parameters
+        ----------
+        out : TensorData | None, optional
+            Destination array.
+        device : Device | None, optional
+            Output device. None infers the device from the inputs.
+        in_place : bool, optional
+            Update this tensor.
+        where : TensorDataBool | bool, optional
+            Broadcastable mask of elements to compute.
+        casting : Casting, optional
+            Casting policy.
+        order : Order, optional
+            Output memory layout.
+        dtype : DTypeLike | None, optional
+            Output dtype.
+        subok : bool, optional
+            Allow array subclasses.
+        requires_grad : bool | None, optional
+            Track gradients. None infers tracking from the inputs.
+
+        Returns
+        -------
+        Tensor
+        """
+        return sign(
+            self,
+            out=out,
+            device=device,
+            in_place=in_place,
+            where=where,
+            casting=casting,
+            order=order,
+            dtype=dtype,
+            subok=subok,
+            requires_grad=requires_grad,
         )
 
     def exp(
@@ -988,36 +1167,35 @@ class Tensor:
         order: Order = "K",
         dtype: DTypeLike | None = None,
         subok: bool = True,
-        requires_grad: bool = False,
+        requires_grad: bool | None = None,
     ) -> Tensor:
         """
-        Calculate the exponential of all elements in the input array.
+        Exponentiate each element.
 
         Parameters
         ----------
         out : TensorData | None, optional
-            A location into which the result is stored.
+            Destination array.
         device : Device | None, optional
-            The device to place the result on.
+            Output device. None infers the device from the inputs.
         in_place : bool, optional
-            Whether to perform the operation in-place on the input tensor.
+            Update this tensor.
         where : TensorDataBool | bool, optional
-            Elements to include in the operation.
+            Broadcastable mask of elements to compute.
         casting : Casting, optional
-            Controls what kind of data casting may occur.
+            Casting policy.
         order : Order, optional
-            The order of memory layout to use for the output.
+            Output memory layout.
         dtype : DTypeLike | None, optional
-            Overrides the data type of the result.
+            Output dtype.
         subok : bool, optional
-            If True, then sub-classes will be passed-through.
-        requires_grad : bool, optional
-            If True, the resulting tensor will be differentiable.
+            Allow array subclasses.
+        requires_grad : bool | None, optional
+            Track gradients. None infers tracking from the inputs.
 
         Returns
         -------
         Tensor
-            Element-wise exponential of the input.
         """
         return exp(
             self,
@@ -1029,62 +1207,53 @@ class Tensor:
             order=order,
             dtype=dtype,
             subok=subok,
-            requires_grad=requires_grad or self.requires_grad,
+            requires_grad=requires_grad,
         )
-
-    ###
-
-    ###
-    ### Reduction
-    ###
 
     def sum(
         self,
         /,
         *,
-        device: Device = "cpu",
-        requires_grad: bool = False,
+        device: Device | None = None,
+        requires_grad: bool | None = None,
         axis: Axis | None = None,
         dtype: DTypeLike | None = None,
         out: TensorData | None = None,
-        keepdims: bool = True,
+        keepdims: bool = False,
         initial: Any = NoValue,
         where: TensorDataBool | bool = True,
     ) -> Tensor:
         """
-        Sum of array elements over a given axis.
+        Sum selected elements.
 
         Parameters
         ----------
-        device : Device, optional
-            The device to place the result on. Default is 'cpu'.
-        requires_grad : bool, optional
-            Whether the result requires gradient computation. Default is False.
+        device : Device | None, optional
+            Output device. None infers the device from the inputs.
+        requires_grad : bool | None, optional
+            Track gradients. None infers tracking from the inputs.
         axis : Axis | None, optional
-            Axis or axes along which a sum is performed.
+            Reduction axes. None reduces all.
         dtype : DTypeLike | None, optional
-            The type of the returned array and of the accumulator in which
-            the elements are summed.
+            Accumulator and result dtype.
         out : TensorData | None, optional
-            Alternative output array in which to place the result.
+            Destination array.
         keepdims : bool, optional
-            If this is set to True, the axes which are reduced are left
-            in the result as dimensions with size one. Default is True.
+            Keep reduced axes with length one.
         initial : Any, optional
-            Starting value for the sum.
+            Starting value.
         where : TensorDataBool | bool, optional
-            Elements to include in the sum.
+            Elements to include.
 
         Returns
         -------
         Tensor
-            An array with the same shape as a, with the specified axis removed.
         """
         return sum(
             self,
             axis=axis,
             device=device,
-            requires_grad=requires_grad or self.requires_grad,
+            requires_grad=requires_grad,
             dtype=dtype,
             out=out,
             keepdims=keepdims,
@@ -1096,8 +1265,8 @@ class Tensor:
         self,
         /,
         *,
-        device: Device = "cpu",
-        requires_grad: bool = False,
+        device: Device | None = None,
+        requires_grad: bool | None = None,
         axis: Axis | None = None,
         out: TensorData | None = None,
         keepdims: bool = False,
@@ -1105,36 +1274,39 @@ class Tensor:
         where: TensorDataBool | bool = True,
     ) -> Tensor:
         """
-        Return the maximum of an array or maximum along an axis.
+        Find the largest selected value.
 
         Parameters
         ----------
-        device : Device, optional
-            The device to place the result on. Default is 'cpu'.
-        requires_grad : bool, optional
-            Whether the result requires gradient computation. Default is False.
+        device : Device | None, optional
+            Output device. None infers the device from the inputs.
+        requires_grad : bool | None, optional
+            Track gradients. None infers tracking from the inputs.
         axis : Axis | None, optional
-            Axis or axes along which to operate.
+            Reduction axes. None reduces all.
         out : TensorData | None, optional
-            Alternative output array in which to place the result.
+            Destination array.
         keepdims : bool, optional
-            If this is set to True, the axes which are reduced are left
-            in the result as dimensions with size one. Default is False.
+            Keep reduced axes with length one.
         initial : Any, optional
-            The minimum value of an output element.
+            Lower bound. Required for masked or empty reductions.
         where : TensorDataBool | bool, optional
-            Elements to compare.
+            Elements to include.
 
         Returns
         -------
         Tensor
-            Maximum of a.
+
+        Raises
+        ------
+        ValueError
+            A masked or empty reduction has no initial value.
         """
         return max(
             self,
             axis=axis,
             device=device,
-            requires_grad=requires_grad or self.requires_grad,
+            requires_grad=requires_grad,
             out=out,
             keepdims=keepdims,
             initial=initial,
@@ -1147,8 +1319,8 @@ class Tensor:
         /,
         out: TensorData | None = None,
         *,
-        device: Device = "cpu",
-        requires_grad: bool = False,
+        device: Device | None = None,
+        requires_grad: bool | None = None,
         where: TensorDataBool | bool = True,
         casting: Casting = "same_kind",
         order: Order = "K",
@@ -1156,40 +1328,39 @@ class Tensor:
         subok: bool = True,
     ) -> Tensor:
         """
-        Element-wise maximum of array elements.
+        Take elementwise maxima.
 
         Parameters
         ----------
         x2 : TensorLike
-            The array holding the elements to compare.
+            Other operand.
         out : TensorData | None, optional
-            The results will be placed in this array.
-        device : Device, optional
-            The device to place the result on. Default is 'cpu'.
-        requires_grad : bool, optional
-            Whether the result requires gradient computation. Default is False.
+            Destination array.
+        device : Device | None, optional
+            Output device. None infers the device from the inputs.
+        requires_grad : bool | None, optional
+            Track gradients. None infers tracking from the inputs.
         where : TensorDataBool | bool, optional
-            This condition is broadcast over the input.
+            Broadcastable mask of elements to compute.
         casting : Casting, optional
-            Controls what kind of data casting may occur.
+            Casting policy.
         order : Order, optional
-            Controls the memory layout of the result.
+            Output memory layout.
         dtype : DTypeLike | None, optional
-            Overrides the data type of the result.
+            Output dtype.
         subok : bool, optional
-            If True, then sub-classes will be passed-through.
+            Allow array subclasses.
 
         Returns
         -------
         Tensor
-            The maximum of self and x2, element-wise.
         """
         return maximum(
             self,
             x2,
             out=out,
             device=device,
-            requires_grad=requires_grad or self.requires_grad,
+            requires_grad=requires_grad,
             where=where,
             casting=casting,
             order=order,
@@ -1197,179 +1368,157 @@ class Tensor:
             subok=subok,
         )
 
-    ###
-    ### Dunder Operations
-    ###
-
     def __add__(self, t: TensorLike) -> Tensor:
         """
-        Element-wise addition.
+        Add element-wise.
 
         Parameters
         ----------
         t : TensorLike
-            The value to add.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Result of addition.
         """
-        return add(self, t, requires_grad=_infer_differentiation_status(self, t))
+        return add(self, t)
 
     def __radd__(self, t: TensorLike) -> Tensor:
         """
-        Element-wise addition (reflected).
+        Add with this tensor on the right.
 
         Parameters
         ----------
         t : TensorLike
-            The value to add.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Result of addition.
         """
-        return add(t, self, requires_grad=_infer_differentiation_status(self, t))
+        return add(t, self)
 
     def __iadd__(self, t: TensorLike) -> Tensor:
         """
-        In-place element-wise addition.
+        Add in place without gradient tracking.
 
         Parameters
         ----------
         t : TensorLike
-            The value to add.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Self, after update.
+            Self.
 
         Raises
         ------
         RuntimeError
-            If the tensor requires gradients.
+            An operand tracks gradients.
         """
-        if self.requires_grad:
-            raise RuntimeError(
-                "In-place operations are (add) forbidden on differentiable tensors."
-            )
         return add(self, t, in_place=True)
 
     def __sub__(self, t: TensorLike) -> Tensor:
         """
-        Element-wise subtraction.
+        Subtract element-wise.
 
         Parameters
         ----------
         t : TensorLike
-            The value to subtract.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Result of subtraction.
         """
-        return subtract(self, t, requires_grad=_infer_differentiation_status(self, t))
+        return subtract(self, t)
 
     def __rsub__(self, t: TensorLike) -> Tensor:
         """
-        Element-wise subtraction (reflected).
+        Subtract this tensor from the left operand.
 
         Parameters
         ----------
         t : TensorLike
-            The value to subtract from.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Result of subtraction.
         """
-        return subtract(t, self, requires_grad=_infer_differentiation_status(self, t))
+        return subtract(t, self)
 
     def __isub__(self, t: TensorLike) -> Tensor:
         """
-        In-place element-wise subtraction.
+        Subtract in place without gradient tracking.
 
         Parameters
         ----------
         t : TensorLike
-            The value to subtract.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Self, after update.
+            Self.
 
         Raises
         ------
         RuntimeError
-            If the tensor requires gradients.
+            An operand tracks gradients.
         """
-        if self.requires_grad:
-            raise RuntimeError(
-                "In-place operations (sub) are forbidden on differentiable tensors."
-            )
         return subtract(self, t, in_place=True)
 
     def __mul__(self, t: TensorLike) -> Tensor:
         """
-        Element-wise multiplication.
+        Multiply element-wise.
 
         Parameters
         ----------
         t : TensorLike
-            The value to multiply.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Result of multiplication.
         """
-        return multiply(self, t, requires_grad=_infer_differentiation_status(self, t))
+        return multiply(self, t)
 
     def __rmul__(self, t: TensorLike) -> Tensor:
         """
-        Element-wise multiplication (reflected).
+        Multiply by this tensor.
 
         Parameters
         ----------
         t : TensorLike
-            The value to multiply.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Result of multiplication.
         """
-        return multiply(t, self, requires_grad=_infer_differentiation_status(self, t))
+        return multiply(t, self)
 
     def __imul__(self, t: TensorLike) -> Tensor:
         """
-        In-place element-wise multiplication.
+        Multiply in place without gradient tracking.
 
         Parameters
         ----------
         t : TensorLike
-            The value to multiply.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Self, after update.
+            Self.
 
         Raises
         ------
         RuntimeError
-            If the tensor requires gradients.
+            An operand tracks gradients.
         """
-        if self.requires_grad:
-            raise RuntimeError(
-                "In-place operations are (mul) forbidden on differentiable tensors."
-            )
         return multiply(self, t, in_place=True)
 
     def __matmul__(self, t: TensorLike) -> Tensor:
@@ -1379,352 +1528,401 @@ class Tensor:
         Parameters
         ----------
         t : TensorLike
-            The value to multiply.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Result of matrix multiplication.
         """
-        return matmul(self, t, requires_grad=_infer_differentiation_status(self, t))
+        return matmul(self, t)
 
     def __rmatmul__(self, t: TensorLike) -> Tensor:
         """
-        Matrix multiplication (reflected).
+        Compute `value @ self`.
 
         Parameters
         ----------
         t : TensorLike
-            The value to multiply.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Result of matrix multiplication.
         """
-        return matmul(t, self, requires_grad=_infer_differentiation_status(self, t))
+        return matmul(t, self)
 
     def __imatmul__(self, t: TensorLike) -> Tensor:
         """
-        In-place matrix multiplication.
+        Compute `self @ value` in place without tracking gradients.
 
         Parameters
         ----------
         t : TensorLike
-            The value to multiply.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Self, after update.
+            Self.
 
         Raises
         ------
         RuntimeError
-            If the tensor requires gradients.
+            An operand tracks gradients.
         """
-        if self.requires_grad:
-            raise RuntimeError(
-                "In-place operations are (matmul) forbidden on differentiable tensors."
-            )
         return matmul(self, t, in_place=True)
 
     def __truediv__(self, t: TensorLike) -> Tensor:
         """
-        Element-wise division.
+        Divide element-wise.
 
         Parameters
         ----------
         t : TensorLike
-            The divisor.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Result of division.
         """
-        return divide(self, t, requires_grad=_infer_differentiation_status(self, t))
+        return divide(self, t)
 
     def __rtruediv__(self, t: TensorLike) -> Tensor:
         """
-        Element-wise division (reflected).
+        Divide the left operand by this tensor.
 
         Parameters
         ----------
         t : TensorLike
-            The dividend.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Result of division.
         """
-        return divide(t, self, requires_grad=_infer_differentiation_status(self, t))
+        return divide(t, self)
 
     def __itruediv__(self, t: TensorLike) -> Tensor:
         """
-        In-place element-wise division.
+        Divide in place without gradient tracking.
 
         Parameters
         ----------
         t : TensorLike
-            The divisor.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Self, after update.
+            Self.
 
         Raises
         ------
         RuntimeError
-            If the tensor requires gradients.
+            An operand tracks gradients.
         """
-        if self.requires_grad:
-            raise RuntimeError(
-                "In-place operations (div) are forbidden on differentiable tensors."
-            )
         return divide(self, t, in_place=True)
 
     def __pow__(self, t: TensorLike) -> Tensor:
         """
-        Element-wise power.
+        Raise each element to its given power.
 
         Parameters
         ----------
         t : TensorLike
-            The exponent.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Result of power.
         """
-        return power(self, t, requires_grad=_infer_differentiation_status(self, t))
+        return power(self, t)
+
+    def __rpow__(self, t: TensorLike) -> Tensor:
+        """
+        Raise the left operand to this tensor's powers.
+
+        Parameters
+        ----------
+        t : TensorLike
+            Other operand.
+
+        Returns
+        -------
+        Tensor
+        """
+        return power(t, self)
 
     def __ipow__(self, t: TensorLike) -> Tensor:
         """
-        In-place element-wise power.
+        Raise to powers in place without gradient tracking.
 
         Parameters
         ----------
         t : TensorLike
-            The exponent.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Self, after update.
+            Self.
 
         Raises
         ------
         RuntimeError
-            If the tensor requires gradients.
+            An operand tracks gradients.
         """
-        if self.requires_grad:
-            raise RuntimeError(
-                "In-place operations (pow) are forbidden on differentiable tensors."
-            )
         return power(self, t, in_place=True)
-
-    ###
-    ### Unary
-    ###
 
     def __eq__(self, value: Any) -> Tensor:  # type: ignore[override]
         """
-        Element-wise equality comparison.
+        Compare elements for equality.
 
         Parameters
         ----------
         value : Any
-            The value to compare with.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Boolean tensor of the comparison result.
         """
         return equal(self, value)
 
     def __ne__(self, value: Any) -> Tensor:  # type: ignore[override]
         """
-        Element-wise inequality comparison.
+        Compare elements for inequality.
 
         Parameters
         ----------
         value : Any
-            The value to compare with.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Boolean tensor of the comparison result.
         """
         return not_equal(self, value)
 
     def __gt__(self, value: Any) -> Tensor:  # type: ignore[override]
         """
-        Element-wise greater than comparison.
+        Compare elements using >.
 
         Parameters
         ----------
         value : Any
-            The value to compare with.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Boolean tensor of the comparison result.
         """
         return greater(self, value)
 
     def __ge__(self, value: Any) -> Tensor:  # type: ignore[override]
         """
-        Element-wise greater than or equal comparison.
+        Compare elements using >=.
 
         Parameters
         ----------
         value : Any
-            The value to compare with.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Boolean tensor of the comparison result.
         """
         return greater_equal(self, value)
 
     def __lt__(self, value: Any) -> Tensor:  # type: ignore[override]
         """
-        Element-wise less than comparison.
+        Compare elements using <.
 
         Parameters
         ----------
         value : Any
-            The value to compare with.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Boolean tensor of the comparison result.
         """
         return less(self, value)
 
     def __le__(self, value: Any) -> Tensor:  # type: ignore[override]
         """
-        Element-wise less than or equal comparison.
+        Compare elements using <=.
 
         Parameters
         ----------
         value : Any
-            The value to compare with.
+            Other operand.
 
         Returns
         -------
         Tensor
-            Boolean tensor of the comparison result.
         """
         return less_equal(self, value)
 
     def __neg__(self) -> Tensor:
         """
-        Element-wise negation.
+        Negate each element.
 
         Returns
         -------
         Tensor
-            Negated tensor.
         """
-        return negative(self, requires_grad=self.requires_grad)
+        return negative(self)
 
-    ###
-    ### Misc dunder
-    ###
-
-    def __getitem__(self, index) -> Any:
+    def __abs__(self) -> Tensor:
         """
-        Return the item at the given index.
-
-        Parameters
-        ----------
-        index : int, slice, tuple, or Tensor
-            The index or slice to retrieve.
+        Take elementwise absolute values.
 
         Returns
         -------
-        Any
-            The item or tensor at the specified index.
+        Tensor
+            Absolute values.
         """
+        return self.abs()
+
+    def __bool__(self) -> bool:
+        if self.size != 1:
+            raise ValueError("Tensor truth value is ambiguous unless it has one element.")
+
+        return bool(self.item())
+
+    def __getitem__(self, index) -> Any:
+        """
+        Return indexed elements.
+
+        Parameters
+        ----------
+        index : int, slice, tuple, array-like, or Tensor
+            Indices or slices.
+
+        Returns
+        -------
+        Tensor
+            Indexed values.
+        """
+        index = _prepare_index(index, self.device, save=self.requires_grad)
+        if self.is_cuda():
+            _check_cuda_index_bounds(index, self.shape)
+
         y = Tensor._fast_init(
             self.data[index],
             device=self.device,
             requires_grad=self.requires_grad,
         )
+
+        shares_storage = _shares_storage(self.data, y.data)
+        if shares_storage:
+            if y.size == self.size and y.dtype == self.dtype:
+                y._version_counter = self._version_counter
+            else:
+                y._version = self._version
+
         if y.requires_grad:
+            source_version = self._version
+            xp = np if self.is_cpu() else cp
 
             def grad_fn() -> None:
+                if not self.requires_grad:
+                    return
+
+                self._check_backward_version(source_version)
+
                 if y.grad is None:
                     y.zero_grad()
-                if self.grad is None:
-                    self.zero_grad()
-                self.grad[index] += y.grad  # type: ignore
+                grad = y.grad
+                accumulator = _gradient_accumulator(self, grad)
+                if _backward_active.get():
+                    grad = _cast_gradient_work(grad, accumulator.dtype)
+
+                if shares_storage:
+                    accumulator[index] += grad
+                else:
+                    xp.add.at(accumulator, index, grad)
 
             y.prev = (self,)
             y.grad_fn = grad_fn
+
         return y
 
     def __setitem__(self, index, value) -> Any:
         """
-        Set the item at the given index.
+        Assign at an index or slice.
 
         Parameters
         ----------
-        index : int, slice, tuple, or Tensor
-            The index or slice to set.
+        index : int, slice, tuple, array-like, or Tensor
+            Indices or slices.
         value : Any
-            The value to set.
+            Values to assign. Tensors move to the destination.
 
         Raises
         ------
         RuntimeError
-            If the tensor requires gradients (in-place modification forbidden).
+            The write would overwrite a differentiable result.
         """
-        if self.requires_grad:
-            raise RuntimeError(
-                "In-place operations (indexing) are forbidden on differentiable tensors."
+        _write_index(self.data, index, value, self.device)
+
+    def __reduce_ex__(self, protocol: int) -> Any:
+        if self.prev or self.grad_fn is not None:
+            raise TypeError(
+                "Tensor has computation history. Use Tensor.copy() to detach, or "
+                "pass copy_prev=True and copy_requires_grad=True to keep the graph."
             )
-        self.data[index] = value
+
+        return super().__reduce_ex__(protocol)
+
+    def __setstate__(self, state: dict[str, Any] | tuple[dict[str, Any], dict[str, Any]]) -> None:
+        slots = {}
+        if isinstance(state, tuple):
+            state, slots = state
+
+        _check_value_dtype(state.get("data"))
+        _check_value_dtype(state.get("grad"))
+
+        for name, value in slots.items():
+            setattr(self, name, value)
+        self.__dict__.update(state)
+        self.__dict__.setdefault("_version_counter", [0])
+
+        if isinstance(self.data, np.generic):
+            object.__setattr__(self, "data", np.asarray(self.data))
+
+        _register_tensor(self)
 
     def __iter__(self) -> Iterator:
         """
-        Return an iterator over the tensor.
+        Iterate over the data.
 
         Returns
         -------
         Iterator
-            An iterator over the tensor's data.
+            Array iterator.
         """
         return iter(self.data)
 
     def __repr__(self) -> str:
         """
-        Return a string representation of the tensor.
+        Format the tensor.
 
         Returns
         -------
         str
-            String representation.
+            Data, device, and tracking flag.
         """
         return f"Tensor({self.data}, device={self.device}{f', name={self.name}' if self.name != '' else ''}, req_grad={self.requires_grad})"
 
     def __hash__(self) -> int:
         """
-        Return the hash of the tensor.
+        Hash by identity.
 
         Returns
         -------
         int
-            Hash value.
+            Object ID.
         """
         return id(self)

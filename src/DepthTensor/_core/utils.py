@@ -1,5 +1,6 @@
+from contextvars import ContextVar
 from typing import Any
-from ..typing import Device, TensorLike, TensorData
+from ..typing import Device, DTypeLike, TensorLike, TensorData, TensorDataBool, TensorType
 
 from .exceptions import (
     CuPyNotFound,
@@ -10,185 +11,335 @@ from .exceptions import (
 
 import numpy as np
 
+_backward_active = ContextVar("depthtensor_backward_active", default=False)
+
 try:
     import cupy as cp
 except (ImportError, ModuleNotFoundError):
     cp = None
+    _cuda_widen_float32 = None
+else:
+    # CuPy's cast can flush float32 subnormals to zero.
+    _cuda_widen_float32 = cp.ElementwiseKernel(
+        "float32 x", "float64 y",
+        'asm("cvt.f64.f32 %0, %1;" : "=d"(y) : "f"(x));',
+        "depthtensor_widen_float32",
+    )
 
-###
-###
-###
+def _check_device(device: Device) -> None:
+    if not isinstance(device, str) or device not in ("cpu", "cuda"):
+        raise ValueError("device must be 'cpu' or 'cuda'.")
 
+def _check_dtype(dtype: DTypeLike | None) -> None:
+    if dtype is None:
+        return
+
+    dtype = np.dtype(dtype)
+    if dtype.kind == "c":
+        raise RuntimeError("Complex dtypes are unsupported.")
+
+    if dtype.subdtype is not None:
+        _check_dtype(dtype.subdtype[0])
+
+    if dtype.names is not None:
+        for name in dtype.names:
+            _check_dtype(dtype.fields[name][0])
+
+def _check_value_dtype(value: Any, seen: set[int] | None = None) -> None:
+    if isinstance(value, complex):
+        raise RuntimeError("Complex dtypes are unsupported.")
+
+    if isinstance(value, (list, tuple)):
+        values = value
+    else:
+        _check_dtype(getattr(value, "dtype", None))
+        if not isinstance(value, np.ndarray) or value.dtype.kind != "O":
+            return
+        values = value.flat
+
+    if seen is None:
+        seen = set()
+    identity = id(value)
+    if identity in seen:
+        return
+    seen.add(identity)
+
+    for item in values:
+        _check_value_dtype(item, seen)
 
 def tensordata_to_device(obj: TensorData, device: Device) -> TensorData:
     """
-    Move the tensor data to the specified device.
+    Move array data to a device.
 
     Parameters
     ----------
     obj : TensorData
-        The data to move (numpy or cupy array).
+        NumPy or CuPy array, or NumPy scalar.
     device : Device
-        The target device ('cpu' or 'cuda').
+        Target device.
 
     Returns
     -------
     TensorData
-        The data on the target device.
+        Array on the target device.
 
     Raises
     ------
     CuPyNotFound
-        If the target device is 'cuda' and CuPy is not available.
+        CUDA requested without CuPy.
     RuntimeError
-        If the input object is not a valid tensor data type.
+        Unsupported obj type.
     """
+    _check_device(device)
+    _check_value_dtype(obj)
+
+    if isinstance(obj, np.generic):
+        obj = np.asarray(obj)
+
     if isinstance(obj, np.ndarray):
         if device == "cpu":
             return obj
-        # * cuda
-        if cp is not None:
-            return cp.array(obj)
         else:
-            raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+            if cp is None:
+                raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+            return cp.array(obj)
     else:
         if cp is not None and isinstance(obj, cp.ndarray):
             if device == "cuda":
                 return obj
-            # * cpu
             return cp.asnumpy(obj)
         else:
             raise RuntimeError(
-                f"Expected argument 'obj' of type numpy.ndarray/cupy.ndarray, got: {type(obj)}"
+                f"Expected NumPy or CuPy data, got {type(obj)}."
             )
 
+def _backward_compute_dtype(*dtypes: DTypeLike) -> np.dtype:
+    return np.result_type(np.float32, *dtypes)
+
+def _cast_gradient_work(data: TensorData, dtype: np.dtype, *, copy: bool = False) -> TensorData:
+    if data.dtype == np.float32 and dtype == np.float64 and (
+        cp is not None and isinstance(data, cp.ndarray)
+    ):
+        return _cuda_widen_float32(data)
+
+    return data.astype(dtype, copy=copy)
+
+def _cast_backward_inputs(
+    grad: TensorData, dtype: DTypeLike, *operands: TensorData | None
+) -> tuple[TensorData, tuple[TensorData | None, ...]]:
+    # Keep the saved forward values when widening them for backward.
+    work_dtype = _backward_compute_dtype(
+        grad.dtype, dtype,
+        *(data.dtype for data in operands if data is not None and data.dtype.kind == "f"),
+    )
+    values = tuple(
+        _cast_gradient_work(data, work_dtype)
+        if data is not None and data.dtype.kind == "f" else data
+        for data in operands
+    )
+
+    return _cast_gradient_work(grad, work_dtype), values
 
 def unbroadcast_tensordata_to_shape(
-    result: TensorData, target_shape: tuple, device: Device
+    result: TensorData, target_shape: tuple, device: Device, *, dtype: DTypeLike | None = None
 ) -> Any:
     """
-    Reverses broadcasting to the un-broadcasted shape.
-
-    When a variable was broadcasted in order to be compatible with the other, e.g. [1.0] + [1.0, 2.0, 3.0], differentiating
-    the result w.r.t. the broadcasted variable such that the gradient matches the variable's gradient requires collapsing
-    the result's shape down to the variable's.
-
-    Let's say:
-    Scalar A, vector B (1x3)
-
-    C = A + B (A is broadcasted into a 1x3 vector)
-
-    In order to calculate A's gradients, per the chain rule, we have to differentiate C w.r.t. A, which gives you a vector
-    with the same shape as C's, even though the gradient's shape must match A's.
-
-    Mathematically, since A influences every components of C, to get the gradient, we would have to sum every connections from
-    A to C, which this function generalizes for every cases.
+    Sum over axes added or expanded by broadcasting.
 
     Parameters
     ----------
     result : TensorData
-        The broadcasted data (gradient).
+        Broadcast gradient.
     target_shape : tuple
-        The shape to unbroadcast to.
+        Shape before broadcasting.
     device : Device
-        The device where the operation takes place.
-
-    Returns
-    -------
-    Any
-        The unbroadcasted data.
-    """
-
-    result_shape = result.shape
-    if result_shape == target_shape:
-        return result
-
-    gained_dims = len(result_shape) - len(target_shape)
-    if gained_dims > 0:
-        # * Sum for gained dimensions.
-        gained_axes = tuple([i for i in range(gained_dims)])
-
-        if device == "cpu":
-            result = np.sum(result, axis=gained_axes)
-        elif device == "cuda":
-            if cp is None:
-                raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-            result = cp.sum(result, axis=gained_axes)
-
-    # * Just collapsing the gained dimensions would not be enough, collapsing stretched dimensions is required too.
-    stretched_axes = []
-    for i, d in enumerate(target_shape):
-        if result.ndim == 0:
-            continue
-        if d == 1 and result.shape[i] > 1:
-            stretched_axes.append(i)
-    if len(stretched_axes) > 0:
-        if device == "cpu":
-            result = np.sum(result, axis=tuple(stretched_axes), keepdims=True)
-        elif device == "cuda":
-            if cp is None:
-                raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-            result = cp.sum(result, axis=tuple(stretched_axes), keepdims=True)
-    return result
-
-
-def to_tensordata(a: TensorLike, device: Device | None = None) -> TensorData:
-    """
-    Convert TensorLike to TensorData.
-
-    Parameters
-    ----------
-    a : TensorLike
-        Input data (Tensor, list, tuple, numpy array, cupy array).
-    device : Device | None, optional
-        Target device. If None, inferred from input.
+        Device for the sums.
+    dtype : DTypeLike, optional
+        Minimum precision for the sums.
 
     Returns
     -------
     TensorData
-        Numpy or CuPy array.
+        Gradient with target_shape.
+    """
+
+    if result.shape == target_shape:
+        return result
+
+    added_dims = result.ndim - len(target_shape)
+    expanded_axes = tuple(
+        axis for axis, size in enumerate(target_shape, start=added_dims)
+        if size == 1 and result.shape[axis] != 1
+    )
+    axes = (*range(added_dims), *expanded_axes)
+
+    xp = np if device == "cpu" else cp
+    if xp is None:
+        raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+
+    if dtype is not None:
+        dtype = _backward_compute_dtype(result.dtype, dtype)
+        if xp is cp and result.dtype == np.float32 and dtype == np.float64:
+            result = _cast_gradient_work(result, dtype)
+
+    result = xp.sum(result, axis=axes, dtype=dtype, keepdims=True)
+    return result.reshape(result.shape[added_dims:])
+
+def to_tensordata(
+    a: TensorLike, device: Device | None = None, *, dtype: DTypeLike | None = None
+) -> TensorData:
+    """
+    Convert input to array data.
+
+    Parameters
+    ----------
+    a : TensorLike
+        Input values or Tensor.
+    device : Device or None, optional
+        Target device. None infers it from a.
+    dtype : DTypeLike or None, optional
+        Target dtype. None infers it from a.
+
+    Returns
+    -------
+    TensorData
+        Array on the target device.
     """
     from ..tensor import Tensor
 
-    if not device:
+    _check_dtype(dtype)
+
+    if device is None:
         device = get_device(a)
+    _check_device(device)
 
     if isinstance(a, Tensor):
         y = a.data
     elif isinstance(a, np.ndarray) or (cp is not None and isinstance(a, cp.ndarray)):
         y = a
     else:
+        if dtype is not None:
+            _check_value_dtype(a)
+
         if device == "cpu":
-            y = np.array(a)
+            y = np.array(a, dtype=dtype)
         else:
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-            y = cp.array(a)
+            y = cp.array(a, dtype=dtype)
 
-    # Convert if needed.
+    _check_value_dtype(y)
+
+    if dtype is not None and dtype != y.dtype:
+        y = y.astype(dtype)
+
     if get_device(y) != device:
         return tensordata_to_device(y, device)
+
     return y
 
+def _gradient_accumulator(operand: TensorType, contribution: TensorData) -> TensorData:
+    current = operand.grad
+    if not _backward_active.get():
+        if current is None:
+            operand.zero_grad()
+        return operand.grad
+
+    dtype = _backward_compute_dtype(
+        operand.dtype, contribution.dtype, current.dtype if current is not None else operand.dtype
+    )
+    if current is None:
+        xp = np if operand.device == "cpu" else cp
+        if xp is None:
+            raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+        operand.grad = xp.zeros_like(operand.data, dtype=dtype)
+    elif current.dtype != dtype:
+        operand.grad = _cast_gradient_work(current, dtype)
+
+    return operand.grad
+
+def _accumulate_operand_grad(operand: TensorType, grad: TensorData) -> None:
+    if grad.shape != operand.shape:
+        grad = unbroadcast_tensordata_to_shape(
+            grad, operand.shape, get_device(grad), dtype=operand.dtype
+        )
+
+    grad = to_tensordata(grad, device=operand.device)
+
+    accumulator = _gradient_accumulator(operand, grad)
+    if _backward_active.get():
+        grad = _cast_gradient_work(grad, accumulator.dtype)
+
+    accumulator += grad
+
+def _cast_compute_operand(data: TensorData, dtype: Any) -> TensorData:
+    if dtype is None:
+        return data
+
+    return data.astype(dtype, copy=False)
+
+def _save_operand_data(
+    operand: TensorLike, device: Device, dtype: DTypeLike | None
+) -> TensorData:
+    """
+    Save forward values for backward.
+
+    Parameters
+    ----------
+    operand : TensorLike
+        Input to save.
+    device : Device
+        Operation device.
+    dtype : DTypeLike or None
+        Compute dtype. None keeps the input dtype.
+
+    Returns
+    -------
+    TensorData
+        Independent copy.
+    """
+    return _cast_compute_operand(to_tensordata(operand, device), dtype).copy()
+
+def _as_boolean_mask(
+    value: TensorLike, device: Device, *, save: bool, require_bool: bool = False
+) -> TensorDataBool:
+    from ..tensor import Tensor
+
+    mask = to_tensordata(value, device)
+    if mask.dtype.kind != "b":
+        if require_bool:
+            raise TypeError("where must be boolean.")
+        return mask.astype(bool)
+
+    source = value.data if isinstance(value, Tensor) else value
+    return mask.copy() if save and mask is source else mask
+
+def _pointwise_mask(
+    where: TensorDataBool | bool, device: Device, *, save: bool
+) -> TensorDataBool | None:
+    if where is True:
+        return None
+
+    return _as_boolean_mask(where, device, save=save, require_bool=True)
 
 def get_device(a: TensorLike) -> Device:
     """
-    Get the device of a TensorLike object.
+    Infer the device of an input.
 
     Parameters
     ----------
     a : TensorLike
-        Input object.
+        Input data.
 
     Returns
     -------
     Device
-        'cpu' or 'cuda'.
+        Either "cpu" or "cuda".
 
     Raises
     ------
     RuntimeError
-        If the input type is invalid.
+        If a has an unsupported type.
     """
     from ..tensor import Tensor
 
@@ -198,18 +349,15 @@ def get_device(a: TensorLike) -> Device:
         return "cpu"
     elif cp is not None and isinstance(a, (cp.ndarray, cp.number, cp.bool_)):
         return "cuda"
+    elif isinstance(a, complex):
+        raise RuntimeError("Complex dtypes are unsupported.")
     elif isinstance(a, (int, float, list, tuple, bool)):
         return "cpu"
     else:
         raise RuntimeError(f"Invalid argument type: {type(a)}")
 
-
-def get_complement_device(device: Device) -> Device:
-    if device == "cpu":
-        return "cuda"
-    else:
-        return "cpu"
-
+def _is_scalar_or_sequence(operand: TensorLike) -> bool:
+    return isinstance(operand, (int, float, np.number, np.bool_, list, tuple))
 
 def get_two_operand_op_device(
     x1: TensorLike,
@@ -228,57 +376,27 @@ def get_two_operand_op_device(
     else:
         if x1_is_tensor:
             op_device = x1.device
-            if get_device(x2) != x1.device and not isinstance(
-                x2,
-                (
-                    int,
-                    float,
-                    list,
-                    tuple,
-                ),  # * Universal datatypes regardless of devices
-            ):
-                # * This leaves x2 to be either np.array or cp.array.
+            if get_device(x2) != x1.device and not _is_scalar_or_sequence(x2):
                 raise DeviceMismatch(
-                    f"There is a incompatibility in datatypes between the two operands of types Tensor and {type(x2)}. Expected datatype of device: {x1.device} {'(CuPy arrays, CUDA Tensors)' if x1.device == 'cuda' else '(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)'}, got datatype of type: {type(x2)}."
+                    f"Expected {x1.device} operand, got {type(x2)}."
                 )
         elif x2_is_tensor:
             op_device = x2.device
-            if get_device(x1) != x2.device and not isinstance(
-                x2,
-                (
-                    int,
-                    float,
-                    list,
-                    tuple,
-                ),  # * Universal datatypes regardless of devices
-            ):
-                # * This leaves x1 to be either np.array or cp.array.
+            if get_device(x1) != x2.device and not _is_scalar_or_sequence(x1):
                 raise DeviceMismatch(
-                    f"There is a incompatibility in datatypes between the two operands of types {type(x1)} and Tensor. Expected datatype of device: {x2.device} {'(CuPy arrays, CUDA Tensors)' if x2.device == 'cuda' else '(NumPy arrays, CPU Tensors, ints, floats, lists, tuples)'}, got datatype of type: {type(x1)}."
+                    f"Expected {x2.device} operand, got {type(x1)}."
                 )
         else:
             if isinstance(x1, np.ndarray) or isinstance(x2, np.ndarray):
                 return "cpu"
+
             if cp is not None and (
                 isinstance(x1, cp.ndarray) or isinstance(x2, cp.ndarray)
             ):
                 return "cuda"
+
             return get_device(x1)
 
     return op_device
-
-
-###
-###
-###
-
-__all__ = [
-    "tensordata_to_device",
-    "unbroadcast_tensordata_to_shape",
-    "to_tensordata",
-    "get_two_operand_op_device",
-    "NoValue",
-    "get_complement_device",
-]
 
 NoValue = object()

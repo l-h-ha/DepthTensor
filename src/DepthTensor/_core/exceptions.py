@@ -1,16 +1,15 @@
-CUPY_NOT_FOUND_MSG = "Module CuPy not found or installed. Please install CuPy."
-DEVICE_MISMATCH_MSG = "There is a mismatch in device between two objects."
-OPERAND_MISMATCH_MSG = "There is a mismatch in the type between two operands."
-GRADIENT_COMPUTATION_ERROR = "An error in gradient computation has occurred."
+CUPY_NOT_FOUND_MSG = "Install CuPy for CUDA."
 
-class CuPyNotFound(RuntimeError):
-    ...
+class CuPyNotFound(RuntimeError): ...
 
-class DeviceMismatch(RuntimeError):
-    ...
+DEVICE_MISMATCH_MSG = "Device mismatch."
 
-class OperandMismatch(RuntimeError):
-    ...
+class DeviceMismatch(RuntimeError): ...
 
-class GradientComputationError(RuntimeError):
-    ...
+OPERAND_MISMATCH_MSG = "Operand type mismatch."
+
+class OperandMismatch(RuntimeError): ...
+
+GRADIENT_COMPUTATION_ERROR = "Gradient computation failed."
+
+class GradientComputationError(RuntimeError): ...

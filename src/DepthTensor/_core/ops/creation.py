@@ -10,8 +10,11 @@ from ...typing import (
     Shape,
 )
 
-from ..exceptions import CuPyNotFound, CUPY_NOT_FOUND_MSG
-from ..utils import to_tensordata, get_device
+from ..exceptions import (
+    CuPyNotFound,
+    CUPY_NOT_FOUND_MSG,
+)
+from ..utils import _check_device, _check_dtype, to_tensordata, get_device
 
 import numpy as np
 
@@ -19,11 +22,6 @@ try:
     import cupy as cp
 except (ImportError, ModuleNotFoundError):
     cp = None
-
-###
-###
-###
-
 
 def zeros_like(
     a: TensorLike,
@@ -37,45 +35,56 @@ def zeros_like(
     shape: Axis | None = None,
 ) -> TensorType:
     """
-    Return an array of zeros with the same shape and type as a given array.
+    Create zeros from a template.
 
     Parameters
     ----------
     a : TensorLike
-        The shape and data-type of `a` define these same attributes of the returned array.
-    device : Device | None, optional
-        The device to place the result on.
+        Template for shape, dtype, device, and layout.
+    device : {'cpu', 'cuda'}, optional
+        If None, use the input device.
     requires_grad : bool, optional
-        Whether the result requires gradient computation.
-    dtype : DTypeLike | None, optional
-        Overrides the data type of the result.
+        Track gradients for a floating-point tensor.
+    dtype : DTypeLike, optional
+        Override the template dtype.
     order : Order, optional
-        Overrides the memory layout of the result.
+        Output layout. 'K' matches the input layout where possible.
     subok : bool, optional
-        If True, then sub-classes will be passed-through.
-    shape : Axis | None, optional
-        Overrides the shape of the result.
+        Preserve NumPy array subclasses.
+    shape : int or tuple of int, optional
+        Override the template dimensions.
 
     Returns
     -------
-    TensorType
-        Array of zeros with the same shape and type as `a`.
+    Tensor
+        Tensor filled with zeros.
+
+    Raises
+    ------
+    RuntimeError
+        Gradient tracking requested for an integer or Boolean result.
+    CuPyNotFound
+        CUDA requested without CuPy.
     """
     from ...tensor import Tensor
 
+    _check_dtype(dtype)
+
     if device is None:
-        device_op = get_device(a)
+        op_device = get_device(a)
     else:
-        device_op = device
-    a = to_tensordata(a)
-    if device_op == "cpu":
+        op_device = device
+    a = to_tensordata(a, device=op_device)
+
+    if op_device == "cpu":
         y = np.zeros_like(a, dtype=dtype, order=order, subok=subok, shape=shape)
     else:
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape)
-    return Tensor._fast_init(y, device=device_op, requires_grad=requires_grad)
 
+        y = cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape)
+
+    return Tensor._fast_init(y, device=op_device, requires_grad=requires_grad)
 
 def ones_like(
     a: TensorLike,
@@ -89,45 +98,56 @@ def ones_like(
     shape: Axis | None = None,
 ) -> TensorType:
     """
-    Return an array of ones with the same shape and type as a given array.
+    Create ones from a template.
 
     Parameters
     ----------
     a : TensorLike
-        The shape and data-type of `a` define these same attributes of the returned array.
-    device : Device | None, optional
-        The device to place the result on.
+        Template for shape, dtype, device, and layout.
+    device : {'cpu', 'cuda'}, optional
+        If None, use the input device.
     requires_grad : bool, optional
-        Whether the result requires gradient computation.
-    dtype : DTypeLike | None, optional
-        Overrides the data type of the result.
+        Track gradients for a floating-point tensor.
+    dtype : DTypeLike, optional
+        Override the template dtype.
     order : Order, optional
-        Overrides the memory layout of the result.
+        Output layout. 'K' matches the input layout where possible.
     subok : bool, optional
-        If True, then sub-classes will be passed-through.
-    shape : Axis | None, optional
-        Overrides the shape of the result.
+        Preserve NumPy array subclasses.
+    shape : int or tuple of int, optional
+        Override the template dimensions.
 
     Returns
     -------
-    TensorType
-        Array of ones with the same shape and type as `a`.
+    Tensor
+        Tensor filled with ones.
+
+    Raises
+    ------
+    RuntimeError
+        Gradient tracking requested for an integer or Boolean result.
+    CuPyNotFound
+        CUDA requested without CuPy.
     """
     from ...tensor import Tensor
 
+    _check_dtype(dtype)
+
     if device is None:
-        device_op = get_device(a)
+        op_device = get_device(a)
     else:
-        device_op = device
-    a = to_tensordata(a)
-    if device_op == "cpu":
+        op_device = device
+    a = to_tensordata(a, device=op_device)
+
+    if op_device == "cpu":
         y = np.ones_like(a, dtype=dtype, order=order, subok=subok, shape=shape)
     else:
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.zeros_like(a, dtype=dtype, order=order, subok=None, shape=shape)
-    return Tensor._fast_init(y, device=device_op, requires_grad=requires_grad)
 
+        y = cp.ones_like(a, dtype=dtype, order=order, subok=None, shape=shape)
+
+    return Tensor._fast_init(y, device=op_device, requires_grad=requires_grad)
 
 def zeros(
     shape: Shape,
@@ -138,37 +158,47 @@ def zeros(
     requires_grad: bool = False,
 ) -> TensorType:
     """
-    Return a new array of given shape and type, filled with zeros.
+    Create a tensor of zeros.
 
     Parameters
     ----------
-    shape : Shape
-        Shape of the new array.
+    shape : tuple of int
+        Output dimensions.
     dtype : DTypeLike, optional
-        The desired data-type for the array. Default is float.
+        Output dtype. Defaults to float.
     order : {'C', 'F'}, optional
-        Whether to store multi-dimensional data in row-major (C-style)
-        or column-major (Fortran-style) order in memory.
-    device : Device, optional
-        The device to place the result on. Default is 'cpu'.
+        Row-major or column-major layout.
+    device : {'cpu', 'cuda'}, optional
+        Defaults to CPU.
     requires_grad : bool, optional
-        Whether the result requires gradient computation.
+        Track gradients for a floating-point tensor.
 
     Returns
     -------
-    TensorType
-        Array of zeros with the given shape, dtype, and order.
+    Tensor
+        Tensor filled with zeros.
+
+    Raises
+    ------
+    RuntimeError
+        Gradient tracking requested for an integer or Boolean result.
+    CuPyNotFound
+        CUDA requested without CuPy.
     """
     from ...tensor import Tensor
+
+    _check_dtype(dtype)
+    _check_device(device)
 
     if device == "cpu":
         y = np.zeros(shape=shape, dtype=dtype, order=order)
     else:
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = cp.zeros(shape=shape, dtype=dtype, order=order)
-    return Tensor._fast_init(y, device=device, requires_grad=requires_grad)
 
+        y = cp.zeros(shape=shape, dtype=dtype, order=order)
+
+    return Tensor._fast_init(y, device=device, requires_grad=requires_grad)
 
 def ones(
     shape: Shape,
@@ -179,33 +209,44 @@ def ones(
     requires_grad: bool = False,
 ) -> TensorType:
     """
-    Return a new array of given shape and type, filled with ones.
+    Create a tensor of ones.
 
     Parameters
     ----------
-    shape : Shape
-        Shape of the new array.
+    shape : tuple of int
+        Output dimensions.
     dtype : DTypeLike, optional
-        The desired data-type for the array. Default is float.
+        Output dtype. Defaults to float.
     order : {'C', 'F'}, optional
-        Whether to store multi-dimensional data in row-major (C-style)
-        or column-major (Fortran-style) order in memory.
-    device : Device, optional
-        The device to place the result on. Default is 'cpu'.
+        Row-major or column-major layout.
+    device : {'cpu', 'cuda'}, optional
+        Defaults to CPU.
     requires_grad : bool, optional
-        Whether the result requires gradient computation.
+        Track gradients for a floating-point tensor.
 
     Returns
     -------
-    TensorType
-        Array of ones with the given shape, dtype, and order.
+    Tensor
+        Tensor filled with ones.
+
+    Raises
+    ------
+    RuntimeError
+        Gradient tracking requested for an integer or Boolean result.
+    CuPyNotFound
+        CUDA requested without CuPy.
     """
     from ...tensor import Tensor
+
+    _check_dtype(dtype)
+    _check_device(device)
 
     if device == "cpu":
         y = np.ones(shape=shape, dtype=dtype, order=order)
     else:
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+
         y = cp.ones(shape=shape, dtype=dtype, order=order)
+
     return Tensor._fast_init(y, device=device, requires_grad=requires_grad)

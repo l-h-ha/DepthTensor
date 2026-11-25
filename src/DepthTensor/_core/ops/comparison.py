@@ -16,7 +16,17 @@ from ..exceptions import (
     DEVICE_MISMATCH_MSG,
 )
 
-from ..utils import to_tensordata, get_device, get_two_operand_op_device
+from ..utils import (
+    _accumulate_operand_grad,
+    _as_boolean_mask,
+    _check_dtype,
+    _is_scalar_or_sequence,
+    _pointwise_mask,
+    to_tensordata,
+    get_device,
+    get_two_operand_op_device,
+)
+from ..output import _cuda_pointwise, _finish_output, _numpy_pointwise, _prepare_output
 
 import numpy as np
 
@@ -25,20 +35,57 @@ try:
 except (ImportError, ModuleNotFoundError):
     cp = None
 
-###
-###
-###
+def _link_where_backward(
+    result: TensorType, x: TensorLike, y: TensorLike, condition: TensorDataBool
+) -> None:
+    from ...tensor import Tensor
 
+    branches = tuple(
+        (branch, selected_when_true, branch._version)
+        for branch, selected_when_true in ((x, True), (y, False))
+        if isinstance(branch, Tensor) and branch.requires_grad
+    )
+
+    if not branches:
+        return
+
+    xp = np if result.device == "cpu" else cp
+
+    def grad_fn() -> None:
+        for branch, _, version in branches:
+            if branch._version != version:
+                raise RuntimeError(
+                    "A saved operand was modified by an in-place operation."
+                )
+
+        if result.grad is None:
+            result.zero_grad()
+
+        grad = result.grad
+        zero = grad.dtype.type(0)
+
+        for branch, selected_when_true, _ in branches:
+            if not branch.requires_grad:
+                continue
+
+            if selected_when_true:
+                selected = xp.where(condition, grad, zero)
+            else:
+                selected = xp.where(condition, zero, grad)
+
+            _accumulate_operand_grad(branch, selected)
+
+    result.prev = tuple(branch for branch, _, _ in branches)
+    result.grad_fn = grad_fn
 
 @overload
 def where(
     condition: TensorLike,
     /,
     *,
-    device: Device = "cpu",
+    device: Device | None = None,
     requires_grad: bool = False,
 ) -> Tuple[TensorType, ...]: ...
-
 
 @overload
 def where(
@@ -47,10 +94,9 @@ def where(
     y: TensorLike | None,
     /,
     *,
-    device: Device = "cpu",
+    device: Device | None = None,
     requires_grad: bool = False,
 ) -> TensorType: ...
-
 
 def where(
     condition: TensorLike,
@@ -62,87 +108,100 @@ def where(
     requires_grad: bool | None = None,
 ) -> Union[tuple[TensorType, ...], TensorType]:
     """
-    Return elements chosen from `x` or `y` depending on `condition`.
+    Select x where condition is true and y elsewhere.
 
     Parameters
     ----------
     condition : TensorLike
-        Where True, yield `x`, otherwise yield `y`.
-    x : TensorLike | None, optional
-        Values from which to choose.
-    y : TensorLike | None, optional
-        Values from which to choose.
-    device : Device | None, optional
-        The device to place the result on. If None, inferred from inputs.
-    requires_grad : bool | None, optional
-        Whether the result requires gradient computation. If None, inferred from inputs (x, y).
+        Broadcastable condition.
+    x : TensorLike, optional
+        Values where condition is true.
+    y : TensorLike, optional
+        Values where condition is false. Supply both branches or neither.
+    device : {'cpu', 'cuda'}, optional
+        If None, choose the device from the inputs.
+    requires_grad : bool or None, optional
+        If None, track gradients when x or y does. False disables tracking.
 
     Returns
     -------
-    TensorType | tuple[TensorType, ...]
-        A tensor with elements from `x` where `condition` is True, and elements
-        from `y` elsewhere. If `x` and `y` are None, returns a tuple of
-        indices where `condition` is True.
+    Tensor or tuple of Tensor
+        Selected values, or index tensors per axis without branches.
+
+    Raises
+    ------
+    ValueError
+        Only one branch supplied.
+    DeviceMismatch
+        Inputs use different devices when device is None.
+    CuPyNotFound
+        CUDA requested without CuPy.
     """
     from ...tensor import Tensor
 
-    if device is None:
-        device = get_device(condition)
-
-    # * One parameter overload
     if (x is None) and (y is None):
         if requires_grad is None:
             requires_grad = False
 
+        if device is None:
+            device = get_device(condition)
+
         data = to_tensordata(condition, device=device)
+
         if device == "cpu":
-            result = np.where(data)  # type: ignore
+            result = np.where(data)
         else:
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+
             result = cp.where(data)
+
         return tuple(
             [
                 Tensor._fast_init(array, device=device, requires_grad=requires_grad)
                 for array in result
             ]
         )
-    # * Two parameters overload
     elif x is not None and y is not None:
+        tracks_branches = any(isinstance(branch, Tensor) and branch.requires_grad for branch in (x, y))
         if requires_grad is None:
-            requires_grad = False
-            if isinstance(x, Tensor):
-                requires_grad = requires_grad or x.requires_grad
-            if isinstance(y, Tensor):
-                requires_grad = requires_grad or y.requires_grad
+            requires_grad = tracks_branches
 
-        if (
-            not (get_device(x) == get_device(y) == device)
-            and not isinstance(x, (int, float, list, tuple))
-            and not isinstance(y, (int, float, list, tuple))
-        ):
-            raise DeviceMismatch(DEVICE_MISMATCH_MSG)
+        if device is None:
+            devices = {
+                get_device(operand)
+                for operand in (condition, x, y)
+                if not _is_scalar_or_sequence(operand)
+            }
 
-        data = to_tensordata(condition, device=device)
+            if len(devices) > 1:
+                raise DeviceMismatch(DEVICE_MISMATCH_MSG)
+            device = next(iter(devices), "cpu")
+
+        data = (
+            _as_boolean_mask(condition, device, save=tracks_branches)
+            if requires_grad else to_tensordata(condition, device)
+        )
         x_data = to_tensordata(x, device=device)
         y_data = to_tensordata(y, device=device)
+
         if device == "cpu":
             result = np.where(data, x_data, y_data)
         else:
             if cp is None:
                 raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
+
             result = cp.where(data, x_data, y_data)
-        return Tensor._fast_init(result, device=device, requires_grad=requires_grad)
+
+        selected = Tensor._fast_init(result, device=device, requires_grad=requires_grad)
+        if requires_grad and tracks_branches:
+            _link_where_backward(selected, x, y, data)
+
+        return selected
     else:
-        raise ValueError("Both x and y parameters must be given.")
+        raise ValueError("Supply both x and y.")
 
-
-###
-###
-###
-
-
-def wrapper_2in_1out(
+def _compare(
     x1: TensorLike,
     x2: TensorLike,
     /,
@@ -158,29 +217,31 @@ def wrapper_2in_1out(
 ) -> TensorType:
     from ...tensor import Tensor
 
+    _check_dtype(dtype)
+
     x1_is_tensor, x2_is_tensor = isinstance(x1, Tensor), isinstance(x2, Tensor)
     op_device = get_two_operand_op_device(x1, x2, x1_is_tensor, x2_is_tensor, device)
 
-    x1 = to_tensordata(x1, device=op_device) if not x1_is_tensor else x1.data
-    x2 = to_tensordata(x2, device=op_device) if not x2_is_tensor else x2.data
+    out, aliases = _prepare_output(out, op_device, x1, x2, where)
+
+    x1 = to_tensordata(x1, device=op_device)
+    x2 = to_tensordata(x2, device=op_device)
+    mask = _pointwise_mask(where, op_device, save=False)
 
     if op_device == "cpu":
-        y = getattr(np, func_name)(
-            x1,
-            x2,
-            out=out,
-            dtype=dtype,
-            where=where,
-            casting=casting,
-            order=order,
-            subok=subok,
+        y = _numpy_pointwise(
+            getattr(np, func_name), (x1, x2), out, mask,
+            order=order, dtype=dtype, casting=casting, subok=subok,
         )
-    else:
+    elif op_device == "cuda":
         if cp is None:
             raise CuPyNotFound(CUPY_NOT_FOUND_MSG)
-        y = getattr(cp, func_name)(x1, x2, out=out, dtype=dtype, casting=casting)
-    return Tensor._fast_init(y, device=op_device)
 
+        y = _cuda_pointwise(
+            getattr(cp, func_name), (x1, x2), out, mask, order=order, dtype=dtype, casting=casting
+        )
+
+    return _finish_output(y, op_device, False, aliases)
 
 def equal(
     x1: TensorLike,
@@ -196,33 +257,42 @@ def equal(
     subok: bool = True,
 ) -> TensorType:
     """
-    Return (x1 == x2) element-wise.
+    Test elementwise equality.
 
     Parameters
     ----------
-    x1, x2 : TensorLike
-        Input tensors.
-    out : TensorDataBool | None, optional
-        A location into which the result is stored.
-    device : Device | None, optional
-        The device to place the result on.
-    where : TensorDataBool | bool, optional
-        This condition is broadcast over the input.
+    x1 : TensorLike
+        First broadcastable operand.
+    x2 : TensorLike
+        Second broadcastable operand.
+    out : TensorDataBool, optional
+        Boolean output buffer.
+    device : {'cpu', 'cuda'}, optional
+        If None, choose the device from the inputs.
+    where : TensorDataBool or bool, optional
+        Write where the mask is true. Without out, skipped values are undefined.
     casting : Casting, optional
-        Controls what kind of data casting may occur.
+        Casting rule for operands and output.
     order : Order, optional
-        Controls the memory layout of the result.
+        Output memory layout.
     dtype : None, optional
-        Overrides the data type of the result.
+        Default Boolean dtype.
     subok : bool, optional
-        If True, then sub-classes will be passed-through.
+        Preserve NumPy array subclasses.
 
     Returns
     -------
-    TensorType
-        Output array, element-wise comparison of x1 and x2.
+    Tensor
+        Boolean result.
+
+    Raises
+    ------
+    DeviceMismatch
+        A tensor and another operand use different devices when device is None.
+    CuPyNotFound
+        CUDA requested without CuPy.
     """
-    return wrapper_2in_1out(
+    return _compare(
         x1,
         x2,
         out=out,
@@ -234,7 +304,6 @@ def equal(
         dtype=dtype,
         subok=subok,
     )
-
 
 def not_equal(
     x1: TensorLike,
@@ -250,33 +319,42 @@ def not_equal(
     subok: bool = True,
 ) -> TensorType:
     """
-    Return (x1 != x2) element-wise.
+    Test elementwise inequality.
 
     Parameters
     ----------
-    x1, x2 : TensorLike
-        Input tensors.
-    out : TensorDataBool | None, optional
-        A location into which the result is stored.
-    device : Device | None, optional
-        The device to place the result on.
-    where : TensorDataBool | bool, optional
-        This condition is broadcast over the input.
+    x1 : TensorLike
+        First broadcastable operand.
+    x2 : TensorLike
+        Second broadcastable operand.
+    out : TensorDataBool, optional
+        Boolean output buffer.
+    device : {'cpu', 'cuda'}, optional
+        If None, choose the device from the inputs.
+    where : TensorDataBool or bool, optional
+        Write where the mask is true. Without out, skipped values are undefined.
     casting : Casting, optional
-        Controls what kind of data casting may occur.
+        Casting rule for operands and output.
     order : Order, optional
-        Controls the memory layout of the result.
+        Output memory layout.
     dtype : None, optional
-        Overrides the data type of the result.
+        Default Boolean dtype.
     subok : bool, optional
-        If True, then sub-classes will be passed-through.
+        Preserve NumPy array subclasses.
 
     Returns
     -------
-    TensorType
-        Output array, element-wise comparison of x1 and x2.
+    Tensor
+        Boolean result.
+
+    Raises
+    ------
+    DeviceMismatch
+        A tensor and another operand use different devices when device is None.
+    CuPyNotFound
+        CUDA requested without CuPy.
     """
-    return wrapper_2in_1out(
+    return _compare(
         x1,
         x2,
         out=out,
@@ -288,7 +366,6 @@ def not_equal(
         dtype=dtype,
         subok=subok,
     )
-
 
 def greater(
     x1: TensorLike,
@@ -304,33 +381,42 @@ def greater(
     subok: bool = True,
 ) -> TensorType:
     """
-    Return the truth value of (x1 > x2) element-wise.
+    Test x1 > x2 elementwise.
 
     Parameters
     ----------
-    x1, x2 : TensorLike
-        Input tensors.
-    out : TensorDataBool | None, optional
-        A location into which the result is stored.
-    device : Device | None, optional
-        The device to place the result on.
-    where : TensorDataBool | bool, optional
-        This condition is broadcast over the input.
+    x1 : TensorLike
+        First broadcastable operand.
+    x2 : TensorLike
+        Second broadcastable operand.
+    out : TensorDataBool, optional
+        Boolean output buffer.
+    device : {'cpu', 'cuda'}, optional
+        If None, choose the device from the inputs.
+    where : TensorDataBool or bool, optional
+        Write where the mask is true. Without out, skipped values are undefined.
     casting : Casting, optional
-        Controls what kind of data casting may occur.
+        Casting rule for operands and output.
     order : Order, optional
-        Controls the memory layout of the result.
+        Output memory layout.
     dtype : None, optional
-        Overrides the data type of the result.
+        Default Boolean dtype.
     subok : bool, optional
-        If True, then sub-classes will be passed-through.
+        Preserve NumPy array subclasses.
 
     Returns
     -------
-    TensorType
-        Output array, element-wise comparison of x1 and x2.
+    Tensor
+        Boolean result.
+
+    Raises
+    ------
+    DeviceMismatch
+        A tensor and another operand use different devices when device is None.
+    CuPyNotFound
+        CUDA requested without CuPy.
     """
-    return wrapper_2in_1out(
+    return _compare(
         x1,
         x2,
         out=out,
@@ -342,7 +428,6 @@ def greater(
         dtype=dtype,
         subok=subok,
     )
-
 
 def greater_equal(
     x1: TensorLike,
@@ -358,33 +443,42 @@ def greater_equal(
     subok: bool = True,
 ) -> TensorType:
     """
-    Return the truth value of (x1 >= x2) element-wise.
+    Test x1 >= x2 elementwise.
 
     Parameters
     ----------
-    x1, x2 : TensorLike
-        Input tensors.
-    out : TensorDataBool | None, optional
-        A location into which the result is stored.
-    device : Device | None, optional
-        The device to place the result on.
-    where : TensorDataBool | bool, optional
-        This condition is broadcast over the input.
+    x1 : TensorLike
+        First broadcastable operand.
+    x2 : TensorLike
+        Second broadcastable operand.
+    out : TensorDataBool, optional
+        Boolean output buffer.
+    device : {'cpu', 'cuda'}, optional
+        If None, choose the device from the inputs.
+    where : TensorDataBool or bool, optional
+        Write where the mask is true. Without out, skipped values are undefined.
     casting : Casting, optional
-        Controls what kind of data casting may occur.
+        Casting rule for operands and output.
     order : Order, optional
-        Controls the memory layout of the result.
+        Output memory layout.
     dtype : None, optional
-        Overrides the data type of the result.
+        Default Boolean dtype.
     subok : bool, optional
-        If True, then sub-classes will be passed-through.
+        Preserve NumPy array subclasses.
 
     Returns
     -------
-    TensorType
-        Output array, element-wise comparison of x1 and x2.
+    Tensor
+        Boolean result.
+
+    Raises
+    ------
+    DeviceMismatch
+        A tensor and another operand use different devices when device is None.
+    CuPyNotFound
+        CUDA requested without CuPy.
     """
-    return wrapper_2in_1out(
+    return _compare(
         x1,
         x2,
         out=out,
@@ -396,7 +490,6 @@ def greater_equal(
         dtype=dtype,
         subok=subok,
     )
-
 
 def less(
     x1: TensorLike,
@@ -412,33 +505,42 @@ def less(
     subok: bool = True,
 ) -> TensorType:
     """
-    Return the truth value of (x1 < x2) element-wise.
+    Test x1 < x2 elementwise.
 
     Parameters
     ----------
-    x1, x2 : TensorLike
-        Input tensors.
-    out : TensorDataBool | None, optional
-        A location into which the result is stored.
-    device : Device | None, optional
-        The device to place the result on.
-    where : TensorDataBool | bool, optional
-        This condition is broadcast over the input.
+    x1 : TensorLike
+        First broadcastable operand.
+    x2 : TensorLike
+        Second broadcastable operand.
+    out : TensorDataBool, optional
+        Boolean output buffer.
+    device : {'cpu', 'cuda'}, optional
+        If None, choose the device from the inputs.
+    where : TensorDataBool or bool, optional
+        Write where the mask is true. Without out, skipped values are undefined.
     casting : Casting, optional
-        Controls what kind of data casting may occur.
+        Casting rule for operands and output.
     order : Order, optional
-        Controls the memory layout of the result.
+        Output memory layout.
     dtype : None, optional
-        Overrides the data type of the result.
+        Default Boolean dtype.
     subok : bool, optional
-        If True, then sub-classes will be passed-through.
+        Preserve NumPy array subclasses.
 
     Returns
     -------
-    TensorType
-        Output array, element-wise comparison of x1 and x2.
+    Tensor
+        Boolean result.
+
+    Raises
+    ------
+    DeviceMismatch
+        A tensor and another operand use different devices when device is None.
+    CuPyNotFound
+        CUDA requested without CuPy.
     """
-    return wrapper_2in_1out(
+    return _compare(
         x1,
         x2,
         out=out,
@@ -450,7 +552,6 @@ def less(
         dtype=dtype,
         subok=subok,
     )
-
 
 def less_equal(
     x1: TensorLike,
@@ -466,33 +567,42 @@ def less_equal(
     subok: bool = True,
 ) -> TensorType:
     """
-    Return the truth value of (x1 <= x2) element-wise.
+    Test x1 <= x2 elementwise.
 
     Parameters
     ----------
-    x1, x2 : TensorLike
-        Input tensors.
-    out : TensorDataBool | None, optional
-        A location into which the result is stored.
-    device : Device | None, optional
-        The device to place the result on.
-    where : TensorDataBool | bool, optional
-        This condition is broadcast over the input.
+    x1 : TensorLike
+        First broadcastable operand.
+    x2 : TensorLike
+        Second broadcastable operand.
+    out : TensorDataBool, optional
+        Boolean output buffer.
+    device : {'cpu', 'cuda'}, optional
+        If None, choose the device from the inputs.
+    where : TensorDataBool or bool, optional
+        Write where the mask is true. Without out, skipped values are undefined.
     casting : Casting, optional
-        Controls what kind of data casting may occur.
+        Casting rule for operands and output.
     order : Order, optional
-        Controls the memory layout of the result.
+        Output memory layout.
     dtype : None, optional
-        Overrides the data type of the result.
+        Default Boolean dtype.
     subok : bool, optional
-        If True, then sub-classes will be passed-through.
+        Preserve NumPy array subclasses.
 
     Returns
     -------
-    TensorType
-        Output array, element-wise comparison of x1 and x2.
+    Tensor
+        Boolean result.
+
+    Raises
+    ------
+    DeviceMismatch
+        A tensor and another operand use different devices when device is None.
+    CuPyNotFound
+        CUDA requested without CuPy.
     """
-    return wrapper_2in_1out(
+    return _compare(
         x1,
         x2,
         out=out,

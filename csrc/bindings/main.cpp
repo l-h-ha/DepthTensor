@@ -4,9 +4,8 @@ namespace py = pybind11;
 
 void init_nn(py::module_ &m);
 
-PYBIND11_MODULE(_ext, m)
-{
-    m.doc() = "DepthTensor C++ Backend Engine";
+PYBIND11_MODULE(_ext, m) {
+    m.doc() = "DepthTensor C++ backend.";
 
     init_nn(m);
 }

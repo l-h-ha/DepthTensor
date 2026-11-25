@@ -1,6 +1,7 @@
 """
-DepthTensor C++ Backend Engine
+DepthTensor C++ backend.
 """
 from __future__ import annotations
 from . import nn
+
 __all__: list[str] = ['nn']

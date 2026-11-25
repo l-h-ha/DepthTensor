@@ -1,108 +1,100 @@
-# DepthTensor: A Hardware-Accelerated Tensor Computation and Autograd Engine
+# DepthTensor
 
-**DepthTensor** is a light-weight, high-performance library for reverse-mode automatic differentiation (AD). It is useful in building the mathematical foundation of deep learning frameworks, with the use of a `Tensor` object which dynamically builds computational graphs and computes gradients using **Vector-Jacobian Products (VJP)**, generalized for tensors of arbitrary rank.
+DepthTensor provides broadcasted tensor math, reductions, matrix multiplication, and reverse-mode autodiff. It uses NumPy on CPU and CuPy on CUDA. For neural networks, see [DepthML](https://github.com/l-h-ha/DepthML).
 
-> **Note**: This is the core autograd and tensor computation engine. For the full deep learning framework, refer to [DepthML](https://github.com/l-h-ha/DepthML).
+DepthTensor supports real-valued tensors. Autograd requires a floating-point dtype.
 
-## 1. Mathematical Foundation
+## Install
 
-The goal is to compute the gradient of scalar field $L$ with respect to an input tensor $X$, denoted as the adjoint $\bar{X}$.
+Use Python 3.10 or later. Pip installs NumPy and builds the C++ extension from source. Install a C++ compiler and Python development headers on Linux, or MSVC and the Windows SDK on Windows.
 
-### 1.1. Generalized VJPs via Tensor Contractions
+### CPU
 
-Let $X$ be a tensor of shape $\mathcal{I} = (i_1, \dots, i_n)$ and $Y = f(X)$ be a tensor of shape $\mathcal{J} = (j_1, \dots, j_m)$.
+```bash
+python -m pip install depthtensor
+```
 
-Mathematically, the Jacobian is the tensor of rank $n + m$ which contains all the partial derivatives $\frac{\partial Y_{\mathcal{J}}}{\partial X_{\mathcal{I}}}$. DepthTensor does not compute this object, but, rather, it computes the contraction of the incoming adjoint $\bar{Y}$ with the local derivative:
+### CPU + CUDA
 
-$$
-\bar{X}_{i_1 \dots i_n} = \sum_{j_1 \dots j_m} \bar{Y}_{j_1 \dots j_m} \frac{\partial Y_{j_1 \dots j_m}}{\partial X_{i_1 \dots i_n}}
-$$
+On Linux or Windows, use a supported NVIDIA GPU and a compatible driver. Run `nvidia-smi` to check the CUDA version your driver supports. Choose one install command. [NVIDIA driver check](https://docs.nvidia.com/deploy/nvidia-smi/index.html#cuda-umd-version)
 
-If X and Y are scalars, indices vanish, and this reduces to:
+| CUDA | Install |
+| --- | --- |
+| 12.x | `python -m pip install depthtensor "cupy-cuda12x[ctk]"` |
+| 13.x | `python -m pip install depthtensor "cupy-cuda13x[ctk]"` |
 
-$$
-\bar{x} = \bar{y} \cdot f'(x)
-$$
+`[ctk]` installs CUDA libraries through pip. Remove `[ctk]` to use an installed CUDA Toolkit. Set `device = "cuda"` in the example. [CuPy installation guide](https://docs.cupy.dev/en/stable/install.html#installing-cupy-from-pypi)
 
-If X and Y are matrices, this reduces to:
+`python -m pip install "depthtensor[cuda]"` uses CuPy's source package and requires an installed CUDA Toolkit. Use one CuPy package per environment. [CuPy source builds](https://docs.cupy.dev/en/stable/install.html#installing-cupy-from-source)
 
-$$
-\bar{X} = \bar{Y} W^{T}
-$$
+## Build from source
 
-### 1.2. Graph Topology and Gradient Accumulation
+Install from the repository root.
 
-Gradients are accumulated using a Depth-First Search (DFS) topological sort, which ensures that for any node $X$ with multiple gradient flow streams ${Y^{(1)}, \dots, Y^{k}}$, the gradient sum is the sum of contractions:
+```bash
+python -m pip install .
+```
 
-$$
-\bar{X} = \sum_{k} \mathrm{VJP}(Y^{(k)}, X)
-$$
+Build a wheel in `dist/` with pip.
 
-All gradients are aggregated from all gradient downstreams.
+```bash
+python -m pip wheel . --no-deps --wheel-dir dist
+```
 
-## 2. Architecture and System Design
+## Example
 
-### 2.1. The Differentiable Primitive (`Tensor`)
-
-The `Tensor` class acts like a node in the Directed Acyclic Graph (DAG).
-
-Operations are automatically dispatched to backend computers, which consists of `numpy` (CPU) and `cupy` (CUDA).
-
-Computational graphs are built dynamically at runtime.
-
-## 3. Empirical Validation
-
-We will verify the tensor engine by minimizing the Rosenbrock function, which is a non-convex optimization benchmark:
-
-$$
-f(x, y) = (a - x)^2 + b(y - x^2)^2
-$$
+Minimize the Rosenbrock function with gradient descent.
 
 ```python
 import depthtensor as dt
 
-# Initialize tensors
-x = dt.Tensor([1.2], device="cuda", requires_grad=True)
-y = dt.Tensor([1.2], device="cuda", requires_grad=True)
+device = "cpu"
+x = dt.Tensor([1.2], device=device, requires_grad=True)
+y = dt.Tensor([1.2], device=device, requires_grad=True)
+a = dt.Tensor([1], device=device)
+b = dt.Tensor([100], device=device)
 
-a, b = dt.Tensor([1], device="cuda"), dt.Tensor(
-    [100], device="cuda"
-)
-
-# Optimization Loop
 lr = 0.001
 for i in range(500):
-    # Rosenbrock: f(x,y) = (a-x)^2 + b(y-x^2)^2
     loss = (a - x) ** 2 + b * (y - x**2) ** 2
-
-    # Backward pass
-    dt.differentiate(loss)
-
-    # Gradient Descent
-    x.data -= lr * x.grad  # type: ignore
-    y.data -= lr * y.grad  # type: ignore
-
-    # Zero grads
+    loss.backward()
+    x.data -= lr * x.grad
+    y.data -= lr * y.grad
     x.zero_grad()
     y.zero_grad()
 
     if i % 10 == 0:
         print(loss.item())
 
-print(f"Converged: ({x.data}, {y.data})")
-# Target: (1.0, 1.0)
+print(f"({x.data}, {y.data})")
 ```
 
-## 4. Installation
+## CPU benchmarks
 
-Requirements: 
-- `numpy`
-- `cupy` (optional: for NVIDIA GPU acceleration)
+Intel i5-11400H, Windows 26200, Python 3.11.15.
+DepthTensor 3.0.0, PyTorch 2.12.1+cpu, TensorFlow 2.21.0, NumPy 2.3.5.
 
-### Pip
+Rounded median (min–max) in µs/call.
+
+| Tasks | Input shapes | DepthTensor | PyTorch | TensorFlow |
+| --- | --- | ---: | ---: | ---: |
+| Vector add | `1024 each` | 26 (21–41) | **4** (4–12) | 36 (24–66) |
+| Broadcast add | `1024×1024 + 1024` | 1747 (1354–2957) | **481** (312–1024) | 793 (535–932) |
+| ReLU | `1024×1024` | 7961 (6033–9598) | **412** (337–620) | 516 (413–1148) |
+| Row sum | `1024×1024` | 588 (427–800) | 274 (189–467) | **214** (187–384) |
+| Matmul | `512×512 each` | 4192 (3350–5444) | 3210 (3079–3755) | **3077** (2760–4022) |
+| Matmul → ReLU → MSE + backward | `256×128 @ 128×128` | 2255 (1858–3681) | **782** (580–911) | 1832 (1531–2672) |
+
+DepthTensor ranked third in all six matmul runs.
+
+Run from the repo root in a Python 3.11 venv.
 
 ```bash
-pip install depthtensor
+python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.12.1+cpu"
+python -m pip install . "tensorflow-cpu==2.21.0" "numpy==2.3.5"
+python benchmarks/run.py --runs 6
 ```
 
-## Author: Ha Hong Le
+## License
+
+[MIT](LICENSE).

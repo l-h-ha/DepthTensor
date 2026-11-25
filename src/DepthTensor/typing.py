@@ -6,10 +6,6 @@ import numpy.typing as npt
 if TYPE_CHECKING:
     from .tensor import Tensor
 
-###
-###
-###
-
 Shape: TypeAlias = tuple[int, ...]
 Axis: TypeAlias = int | Shape
 Device: TypeAlias = Literal["cpu", "cuda"]
@@ -27,10 +23,6 @@ int16: TypeAlias = np.int16
 int32: TypeAlias = np.int32
 int64: TypeAlias = np.int64
 double: TypeAlias = np.double
-
-###
-###
-###
 
 TensorType: TypeAlias = "Tensor"
 TensorData: TypeAlias = npt.NDArray[Any] | Any
