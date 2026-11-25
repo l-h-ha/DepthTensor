@@ -2,7 +2,7 @@
 
 Uses [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0]
+## [3.0.0] - 2026-11-25
 
 ### Changed
 
